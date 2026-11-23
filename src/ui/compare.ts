@@ -1,14 +1,151 @@
 import { VehicleEngine } from '../data/engine';
-import { displayValue, fieldLabels } from '../domain/format';
+import { dateLabel, displayValue, fieldLabels } from '../domain/format';
 import { formatPlate, parsePlate } from '../domain/plate';
-import { element, link } from './dom';
-import { vehicleName } from './report';
+import type { Field, Report } from '../domain/report';
+import { button, element, link } from './dom';
+import { statusLabels, vehicleName } from './report';
+import { resources } from '../data/sources';
 
 const engine = new VehicleEngine();
 const form = document.querySelector<HTMLFormElement>('#compare')!;
 const result = document.querySelector<HTMLElement>('#comparison')!;
 const status = document.querySelector<HTMLElement>('#comparison-status')!;
 let active: AbortController | undefined;
+const highlights = [
+  ['shnat_yitzur', 'שנת ייצור'],
+  ['ramat_gimur', 'רמת גימור'],
+  ['kilometer_test_aharon', 'נסועה בטסט האחרון'],
+  ['baalut', 'בעלות רשומה'],
+];
+
+function reportLink(report: Report) {
+  const url = new URL(import.meta.env.BASE_URL, location.origin);
+  url.searchParams.set('search', report.plate);
+  if (report.domain === 'equipment') url.searchParams.set('type', 'equipment');
+  return link(formatPlate(report.plate), url.href);
+}
+
+function normalized(key: string, field: Field) {
+  const value = String(field.chosen.value)
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+  const format = fieldLabels[key]?.format;
+  if (format === 'date') return dateLabel(field.chosen.value);
+  if (format === 'bool')
+    return value === 'true' ? '1' : value === 'false' ? '0' : value;
+  return format === 'number' && value !== '' && Number.isFinite(Number(value))
+    ? Number(value)
+    : value;
+}
+
+function snapshot(report: Report, side: string) {
+  const card = element('section', undefined, 'panel compare-card');
+  const plate = reportLink(report);
+  plate.className = 'compare-plate';
+  card.append(
+    element('p', side, 'muted'),
+    plate,
+    element(
+      'h2',
+      report.identity
+        ? vehicleName(report)
+        : report.outcome === 'partial'
+          ? 'תוצאה חלקית'
+          : 'רכב לא נמצא',
+    ),
+  );
+  if (!report.identity) return card;
+  const data = element('dl');
+  for (const [key, title] of highlights) {
+    const field = report.fields[key];
+    data.append(
+      element('dt', title),
+      element('dd', field ? displayValue(key, field.chosen.value) : 'לא זמין'),
+    );
+  }
+  data.append(
+    element('dt', 'סטטוס רישוי'),
+    element('dd', statusLabels[report.status]),
+  );
+  card.append(data);
+  return card;
+}
+
+function comparison(reports: Report[]) {
+  const cards = element('div', undefined, 'compare-cards');
+  reports.forEach((report, index) =>
+    cards.append(snapshot(report, index ? 'רכב שני' : 'רכב ראשון')),
+  );
+  const details = element('section', undefined, 'panel compare-details');
+  const tools = element('div', undefined, 'compare-tools');
+  const heading = element('h2', 'השוואת מפרט');
+  const share = button('העתקת קישור להשוואה', () => {
+    void navigator.clipboard
+      .writeText(location.href)
+      .then(() => {
+        status.textContent = 'קישור ההשוואה הועתק.';
+      })
+      .catch(() => {
+        status.textContent = 'אפשר להעתיק את קישור ההשוואה משורת הכתובת.';
+      });
+  });
+  tools.append(heading, share);
+  const table = element('table');
+  const header = table.createTHead().insertRow();
+  header.append(element('th', 'מאפיין'));
+  for (const report of reports) {
+    const column = element('th');
+    column.append(reportLink(report));
+    header.append(column);
+  }
+  for (const column of header.cells) column.scope = 'col';
+  const groups = new Map<string, HTMLTableSectionElement>();
+  for (const [key, spec] of Object.entries(fieldLabels)) {
+    const entries = reports.map((report) => report.fields[key]);
+    if (entries.every((entry) => !entry)) continue;
+    let group = groups.get(spec.category);
+    if (!group) {
+      group = table.createTBody();
+      groups.set(spec.category, group);
+      const separator = element('th', spec.category);
+      separator.colSpan = 3;
+      separator.scope = 'rowgroup';
+      group.insertRow().append(separator);
+    }
+    const row = group.insertRow();
+    const [left, right] = entries;
+    if (
+      left &&
+      right &&
+      !left.conflicting &&
+      !right.conflicting &&
+      normalized(key, left) !== normalized(key, right)
+    )
+      row.className = 'different';
+    const label = element('th', spec.label);
+    label.scope = 'row';
+    row.append(label);
+    for (const entry of entries) {
+      const cell = row.insertCell();
+      cell.textContent = entry
+        ? displayValue(key, entry.chosen.value)
+        : 'לא זמין';
+      if (entry?.conflicting) {
+        const origin = resources[entry.chosen.source];
+        const note = element('small', 'מקורות חלוקים · ');
+        note.append(link(origin.label, origin.url));
+        cell.append(note);
+      }
+    }
+  }
+  details.append(
+    tools,
+    groups.size ? table : element('p', 'טרם נמצאו שדות להשוואה.'),
+  );
+  result.replaceChildren(cards, details);
+}
 
 function fill(restore = false) {
   const query = new URLSearchParams(location.search);
@@ -28,6 +165,10 @@ async function compare(updateUrl: boolean) {
     status.textContent = updateUrl ? 'הזינו שני מספרי רישוי תקינים.' : '';
     return;
   }
+  if (a === b) {
+    status.textContent = 'הזינו שני מספרי רישוי שונים להשוואה.';
+    return;
+  }
   if (updateUrl) {
     const url = new URL(location.href);
     url.search = new URLSearchParams({ a, b }).toString();
@@ -43,42 +184,7 @@ async function compare(updateUrl: boolean) {
       ),
     );
     if (controller.signal.aborted) return;
-    const table = element('table');
-    const header = table.createTHead().insertRow();
-    header.append(element('th', 'מאפיין'));
-    for (const report of reports) {
-      const heading = element('th');
-      const url = new URL(import.meta.env.BASE_URL, location.origin);
-      url.searchParams.set('search', report.plate);
-      heading.append(link(formatPlate(report.plate), url.href));
-      header.append(heading);
-    }
-    for (const column of header.cells) column.scope = 'col';
-    const body = table.createTBody();
-    const headline = body.insertRow();
-    headline.append(element('th', 'תוצאה'));
-    for (const report of reports)
-      headline.insertCell().textContent = report.identity
-        ? vehicleName(report)
-        : report.outcome === 'partial'
-          ? 'הבדיקה חלקית'
-          : 'לא נמצא';
-    for (const [key, spec] of Object.entries(fieldLabels)) {
-      const entries = reports.map((report) => report.fields[key]?.chosen);
-      if (entries.every((entry) => !entry)) continue;
-      const row = body.insertRow();
-      if (entries.every(Boolean) && entries[0]?.value !== entries[1]?.value)
-        row.className = 'different';
-      const heading = element('th', spec.label);
-      heading.scope = 'row';
-      row.append(heading);
-      entries.forEach((entry) => {
-        row.insertCell().textContent = entry
-          ? displayValue(key, entry.value)
-          : 'לא זמין';
-      });
-    }
-    result.replaceChildren(table);
+    comparison(reports);
     result.hidden = false;
     status.textContent = Object.values(reports).some((report) =>
       Object.values(report.sources).some((source) => source.issue),

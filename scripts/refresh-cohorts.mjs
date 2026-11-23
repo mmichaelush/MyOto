@@ -1,5 +1,6 @@
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { setTimeout } from 'node:timers/promises';
+import { mileageSummary, sampleWindows } from '../src/domain/statistics.ts';
 
 const file = (name) => new URL(`../src/data/${name}.json`, import.meta.url);
 const resources = JSON.parse(await readFile(file('resources'), 'utf8'));
@@ -11,15 +12,24 @@ const cohorts = [
 ];
 const sampleLimit = 200;
 
-async function rows(source, filters, fields, limit) {
+async function rows(
+  source,
+  filters,
+  fields,
+  limit,
+  offset = 0,
+  includeTotal = false,
+) {
   const url = new URL('https://data.gov.il/api/3/action/datastore_search');
   url.search = new URLSearchParams({
     resource_id: resources[source].id,
     filters: JSON.stringify(filters),
     fields: fields.join(','),
     limit,
-    sort: '_id asc',
-    include_total: 'false',
+    offset,
+    sort: source === 'private_cars_1' ? 'mispar_rechev asc,_id asc' : '_id asc',
+    include_total: String(includeTotal),
+    ...(includeTotal && { total_estimation_threshold: '1000000' }),
   });
   const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
   if (!response.ok) throw new Error(`${source} returned ${response.status}`);
@@ -34,7 +44,7 @@ async function rows(source, filters, fields, limit) {
     throw new Error(`Invalid ${source} response`);
   }
   await setTimeout(800);
-  return body.result.records;
+  return body.result;
 }
 
 function distribution(sample, field) {
@@ -55,6 +65,7 @@ function distribution(sample, field) {
 const result = {
   fetchedAt: new Date().toISOString(),
   sampleLimit,
+  method: 'stratified-rank-windows',
   cohorts: {},
 };
 for (const [make, slug, year] of cohorts) {
@@ -68,22 +79,51 @@ for (const [make, slug, year] of cohorts) {
   const makerCodes = [
     ...new Set(variants.map((variant) => Number(variant.id.split('/')[1]))),
   ];
-  const plateRows = await rows(
+  const filters = {
+    shnat_yitzur: year,
+    kinuy_mishari: model.name,
+    tozeret_cd: makerCodes,
+  };
+  const fields = [
+    'mispar_rechev',
+    'shnat_yitzur',
+    'sug_degem',
+    'tozeret_cd',
+    'degem_cd',
+    'tzeva_rechev',
+    'baalut',
+    'sug_delek_nm',
+    'ramat_gimur',
+  ];
+  const frame = await rows(
     'private_cars_1',
-    { shnat_yitzur: year, kinuy_mishari: model.name, tozeret_cd: makerCodes },
-    [
-      'mispar_rechev',
-      'shnat_yitzur',
-      'sug_degem',
-      'tozeret_cd',
-      'degem_cd',
-      'tzeva_rechev',
-      'baalut',
-      'sug_delek_nm',
-      'ramat_gimur',
-    ],
-    sampleLimit,
+    filters,
+    ['mispar_rechev'],
+    0,
+    0,
+    true,
   );
+  if (
+    frame.total_was_estimated ||
+    !Number.isSafeInteger(frame.total) ||
+    frame.total < 0
+  )
+    throw new Error(
+      `Exact cohort size unavailable for ${make}/${slug}/${year}`,
+    );
+  const plateRows = [];
+  for (const window of sampleWindows(frame.total, sampleLimit, 8)) {
+    const page = await rows(
+      'private_cars_1',
+      filters,
+      fields,
+      window.limit,
+      window.offset,
+    );
+    if (page.records.length !== window.limit)
+      throw new Error('Cohort changed during sampling');
+    plateRows.push(...page.records);
+  }
   const sample = [
     ...new Map(
       plateRows
@@ -102,10 +142,10 @@ for (const [make, slug, year] of cohorts) {
   ];
   if (sample.length < 20) continue;
   const plates = sample.map((row) => row.mispar_rechev);
-  const mileage = new Map();
+  const mileage = [];
   for (let offset = 0; offset < plates.length; offset += 50) {
     const requested = plates.slice(offset, offset + 50);
-    const history = await rows(
+    const { records: history } = await rows(
       'history_1',
       { mispar_rechev: requested },
       ['mispar_rechev', 'kilometer_test_aharon'],
@@ -116,36 +156,18 @@ for (const [make, slug, year] of cohorts) {
     for (const row of history) {
       if (!requested.includes(row.mispar_rechev))
         throw new Error('Mileage source returned an unrequested key');
-      const km = row.kilometer_test_aharon;
-      if (!Number.isSafeInteger(km) || km <= 0) continue;
-      if (
-        mileage.has(row.mispar_rechev) &&
-        mileage.get(row.mispar_rechev) !== km
-      )
-        mileage.set(row.mispar_rechev, null);
-      else mileage.set(row.mispar_rechev, km);
+      mileage.push(row);
     }
   }
-  const readings = [...mileage.values()]
-    .filter((km) => km !== null)
-    .sort((a, b) => a - b);
-  const percentile = (p) => readings[Math.round(p * (readings.length - 1))];
   result.cohorts[`${make}/${slug}/${year}`] = {
     variantKeys: [...keys],
     n: sample.length,
+    frameSize: frame.total,
     colors: distribution(sample, 'tzeva_rechev'),
     ownership: distribution(sample, 'baalut'),
     fuel: distribution(sample, 'sug_delek_nm'),
     trims: distribution(sample, 'ramat_gimur'),
-    mileage:
-      readings.length >= 20
-        ? {
-            n: readings.length,
-            p25: percentile(0.25),
-            median: percentile(0.5),
-            p75: percentile(0.75),
-          }
-        : null,
+    mileage: mileageSummary(mileage),
   };
 }
 const temporary = new URL('./cohorts.json.tmp', file('cohorts'));
