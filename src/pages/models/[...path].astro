@@ -2,6 +2,7 @@
 import Site from '../../layouts/Site.astro';
 import CatalogSource from '../../components/CatalogSource.astro';
 import Cohort from '../../components/Cohort.astro';
+import '../../styles/catalog.css';
 import {
   catalog,
   count,
@@ -41,6 +42,9 @@ const yearRows = model
     }))
   : [];
 const peak = Math.max(1, ...yearRows.map((row) => row.active));
+const position = yearRows.findIndex((row) => row.year === year);
+const newer = yearRows[position - 1]?.year;
+const older = yearRows[position + 1]?.year;
 ---
 
 <Site title={title}>
@@ -64,23 +68,30 @@ const peak = Math.max(1, ...yearRows.map((row) => row.active));
       )}
       {year && ` ${year}`}
     </h1>
-    <dl class="grid-data">
-      <div class="datum">
+    <dl class="catalog-stats">
+      <div>
         <dt>כלי רכב פעילים</dt>
         <dd>{count.format(sum.active)}</dd>
       </div>
-      <div class="datum">
+      <div>
         <dt>כלי רכב לא פעילים</dt>
         <dd>{count.format(sum.inactive)}</dd>
       </div>
-      <div class="datum">
-        <dt>שורות קוד דגם ושנת ייצור</dt>
+      <div>
+        <dt>רישומי דגם ושנתון</dt>
         <dd>{count.format(rows.length)}</dd>
       </div>
     </dl>
+    {year && (
+      <nav class="catalog-year-links" aria-label="שנתונים של הדגם">
+        {newer && <a href={modelUrl + newer + '/'}>שנתון {newer}</a>}
+        {older && <a href={modelUrl + older + '/'}>שנתון {older}</a>}
+        <a href={modelUrl}>כל השנתונים</a>
+      </nav>
+    )}
   </section>
   {!model && (
-    <section class="panel">
+    <section class="panel catalog-directory">
       <h2>דגמים בקטלוג</h2>
       <div class="model-grid">
         {make.models.map((entry) => (
@@ -93,9 +104,14 @@ const peak = Math.max(1, ...yearRows.map((row) => row.active));
     </section>
   )}
   {model && !year && (
-    <section class="panel">
+    <section class="panel catalog-data">
       <h2>כלי רכב לפי שנת ייצור</h2>
-      <div class="table-scroll">
+      <div
+        class="table-scroll"
+        role="region"
+        aria-label="כלי רכב לפי שנת ייצור"
+        tabindex="0"
+      >
         <table>
           <thead>
             <tr>
@@ -128,9 +144,14 @@ const peak = Math.max(1, ...yearRows.map((row) => row.active));
     </section>
   )}
   {year && (
-    <section class="panel">
+    <section class="panel catalog-data">
       <h2>גרסאות וקודי דגם</h2>
-      <div class="table-scroll">
+      <div
+        class="table-scroll"
+        role="region"
+        aria-label="גרסאות וקודי דגם"
+        tabindex="0"
+      >
         <table>
           <thead>
             <tr>
@@ -174,9 +195,14 @@ const peak = Math.max(1, ...yearRows.map((row) => row.active));
     </section>
   )}
   {model && year && (
-    <section class="panel">
+    <section class="panel catalog-data">
       <h2>שנתונים סמוכים</h2>
-      <div class="table-scroll">
+      <div
+        class="table-scroll"
+        role="region"
+        aria-label="שנתונים סמוכים"
+        tabindex="0"
+      >
         <table>
           <thead>
             <tr>
@@ -204,7 +230,7 @@ const peak = Math.max(1, ...yearRows.map((row) => row.active));
   )}
   {model && year && <Cohort id={`${make.id}/${model.id}/${year}`} />}
   {model && !year && make.models.length > 1 && (
-    <section class="panel">
+    <section class="panel catalog-directory">
       <h2>דגמים נוספים של {make.name}</h2>
       <div class="model-grid">
         {make.models

@@ -1,15 +1,33 @@
 ---
 import Site from '../layouts/Site.astro';
 import '../styles/vehicle.css';
+const base = import.meta.env.BASE_URL;
 ---
 
 <Site title="בדיקת רכב לפי מספר רישוי" privatePage={true}>
   <section class="panel hero lookup-hero">
     <div class="hero-heading">
-      <h1>בדיקת רכב לפי מספר רישוי</h1>
-      <p>מפרט רכב, רישוי, בעלויות וקריאות שירות.</p>
+      <svg
+        class="lookup-mark"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.65"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+        <polyline points="14 2 14 8 20 8"></polyline>
+        <circle cx="11.5" cy="14.5" r="2.5"></circle>
+        <path d="M13.25 16.25 15 18"></path>
+      </svg>
+      <div>
+        <h1>בדיקת רכב לפי מספר רישוי</h1>
+        <p>מפרט רכב, רישוי, בעלויות וקריאות שירות.</p>
+      </div>
     </div>
-    <form id="vehicle-form" class="search">
+    <form id="vehicle-form" class="search" action={base} method="get">
       <div class="control">
         <label for="plate">מספר רישוי או צמ״ה</label>
         <div class="plate plate-input" dir="ltr">
@@ -43,11 +61,15 @@ import '../styles/vehicle.css';
         </svg>
         חיפוש רכב
       </button>
-      <small id="plate-help">4–8 ספרות, עם מקפים או בלי.</small>
+      <small id="plate-help">
+        <bdi>4–8</bdi> ספרות, עם מקפים או בלי.
+      </small>
     </form>
-    <noscript>כדי לבדוק רכב, יש להפעיל JavaScript בדפדפן.</noscript>
+    <noscript>כדי לבצע את הבדיקה, יש להפעיל JavaScript בדפדפן.</noscript>
   </section>
-  <p id="search-status" role="status" class="muted"></p>
+  <div class="lookup-status">
+    <p id="search-status" role="status" class="muted"></p>
+  </div>
   <div id="actions" class="actions" role="group" aria-label="פעולות דוח"></div>
   <div id="report"></div>
   <aside id="saved" class="panel" hidden></aside>

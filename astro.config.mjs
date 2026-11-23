@@ -6,5 +6,5 @@ export default defineConfig({
   trailingSlash: 'always',
   output: 'static',
   devToolbar: { enabled: false },
-  build: { concurrency: 6 },
+  build: { concurrency: 6, inlineStylesheets: 'never' },
 });

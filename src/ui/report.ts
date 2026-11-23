@@ -1,5 +1,5 @@
 import { resources, type SourceId } from '../data/sources';
-import type { Report } from '../domain/report';
+import type { Report, SourceReplies } from '../domain/report';
 import {
   sourceDate,
   sourceResult,
@@ -10,11 +10,13 @@ import {
 } from '../presentation/vehicle-view-model';
 import { element, link } from './dom';
 import { icon, mark } from './icons';
+import { renderRecall } from './recall-panel';
 
 export { statusLabels, vehicleName } from '../presentation/vehicle-view-model';
 
 function dataRow(data: DataRow, highlight = false) {
   const row = element('div', undefined, highlight ? 'data-metric' : 'data-row');
+  row.dataset.field = data.id;
   const label = element('dt', data.label);
   if (highlight && data.icon) mark(label, data.icon);
   const value = element('dd');
@@ -79,14 +81,16 @@ function dataTable(data: DataTable) {
   return section;
 }
 
-function sourceDetails(report: Report) {
+export function sourceDetails(report: Report, checked: SourceReplies = {}) {
   const section = element('details', undefined, 'advanced source-list');
+  section.id = 'report-sources';
   section.append(mark(element('summary', 'מקורות המידע'), 'database'));
-  const sorted = Object.entries(report.sources).sort(([a], [b]) =>
-    resources[a as SourceId].label.localeCompare(
-      resources[b as SourceId].label,
-      'he',
-    ),
+  const sorted = Object.entries({ ...checked, ...report.sources }).sort(
+    ([a], [b]) =>
+      resources[a as SourceId].label.localeCompare(
+        resources[b as SourceId].label,
+        'he',
+      ),
   );
   for (const [id, reply] of sorted) {
     const key = id as SourceId;
@@ -117,38 +121,33 @@ function sourceDetails(report: Report) {
     });
     section.append(item);
   }
-  if (report.recalls.length) {
-    const notice = element('p');
-    notice.append(
-      link(
-        'בדיקת קריאת שירות באתר משרד התחבורה',
-        'https://www.gov.il/he/service/recall-vehicle',
-      ),
-    );
-    section.append(notice);
-  }
   return section;
 }
 
-export function renderReport(report: Report) {
+export function renderReport(report: Report, checked?: SourceReplies) {
   const article = element('article', undefined, 'vehicle-report');
+  const recall =
+    report.complete && report.sources.recall
+      ? renderRecall(report, !report.identity, report.identity ? 'h3' : 'h2')
+      : undefined;
   if (!report.identity) {
     if (!report.complete) return article;
     article.append(
       element(
         'p',
         report.outcome === 'empty'
-          ? 'לא נמצאה התאמה במספר שהוזן.'
+          ? 'לא נמצאה רשומת רישוי במספר שהוזן.'
           : 'חלק מהמאגרים לא היו זמינים. אפשר לנסות שוב.',
-        'panel notice',
+        'unregistered-note muted',
       ),
-      sourceDetails(report),
+      ...(recall ? [recall] : []),
+      sourceDetails(report, checked),
     );
     return article;
   }
 
   const view = vehicleViewModel(report);
-  const summary = element('section', undefined, 'panel report-summary');
+  const summary = element('section', undefined, 'report-summary');
   const heading = element('div', undefined, 'vehicle-heading');
   const title = element('div', undefined, 'vehicle-title');
   const name = element('h2');
@@ -190,17 +189,31 @@ export function renderReport(report: Report) {
     for (const text of view.alerts) alerts.append(element('li', text));
     article.append(alerts);
   }
-  const firstTable = view.tables.find(
-    (table) => table.icon === 'triangle-alert',
-  );
-  if (firstTable) article.append(dataTable(firstTable));
+  const sources = sourceDetails(report, checked);
   const details = element('div', undefined, 'report-sections');
+  details.id = 'vehicle-details';
   details.append(
     ...view.sections.map(dataSection),
-    ...view.tables.filter((table) => table !== firstTable).map(dataTable),
     ...view.additional.map(dataSection),
   );
+  const history = element('div', undefined, 'report-sections');
+  history.id = 'vehicle-history';
+  history.append(...view.tables.map(dataTable));
+  const nav = element('nav', undefined, 'report-nav');
+  nav.setAttribute('aria-label', 'ניווט בתוך הדוח');
+  if (details.children.length)
+    nav.append(link('מפרט ורישוי', '#vehicle-details'));
+  if (history.children.length) nav.append(link('היסטוריה', '#vehicle-history'));
+  if (recall) nav.append(link('ריקולים', '#vehicle-recall'));
+  const sourceLink = link('מקורות המידע', '#report-sources');
+  sourceLink.addEventListener('click', () => {
+    sources.open = true;
+  });
+  nav.append(sourceLink);
+  summary.append(nav);
+  if (recall) article.append(recall);
   if (details.children.length) article.append(details);
-  article.append(sourceDetails(report));
+  if (history.children.length) article.append(history);
+  article.append(sources);
   return article;
 }

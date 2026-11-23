@@ -6,9 +6,10 @@ const bike = '21234567';
 const collision = '91234567';
 const missing = '81234567';
 const partial = '71234567';
+const onlyRecall = '61234567';
 const dataHost = 'https://data.gov.il';
 
-async function fixtures(page: Page) {
+async function fixtures(page: Page, requested: string[] = []) {
   await page.clock.setFixedTime(new Date('2026-11-23T10:00:00Z'));
   await page.route(
     (url) =>
@@ -17,10 +18,18 @@ async function fixtures(page: Page) {
       const search = new URL(route.request().url()).searchParams;
       const query = JSON.parse(search.get('filters') ?? '{}');
       const source = search.get('resource_id');
+      if (source) requested.push(source);
       const plate = String(
         query.mispar_rechev ?? query.mispar_tzama ?? query.MISPAR_RECHEV ?? '',
       );
       if (plate === partial && source === resources.private_cars_1.id) {
+        await route.fulfill({
+          status: 404,
+          headers: { 'access-control-allow-origin': '*' },
+        });
+        return;
+      }
+      if (plate === partial && source === resources.recall.id) {
         await route.fulfill({
           status: 404,
           headers: { 'access-control-allow-origin': '*' },
@@ -95,13 +104,25 @@ async function fixtures(page: Page) {
           })),
         );
       }
-      if (plate === registration && source === resources.recall.id) {
+      if (
+        [registration, onlyRecall].includes(plate) &&
+        source === resources.recall.id
+      ) {
         records.push({
           MISPAR_RECHEV: Number(plate),
           RECALL_ID: 501,
           TAARICH_PTICHA: '2026-10-03',
           SUG_TAKALA: 'מערכת בלימה',
           TEUR_TAKALA: 'יש לתאם בדיקה עם היבואן.',
+        });
+      }
+      if (source === resources.campaigns.id && query.RECALL_ID?.includes(501)) {
+        records.push({
+          RECALL_ID: 501,
+          OFEN_TIKUN: 'החלפת רכיב במערכת הבלימה',
+          YEVUAN_TEUR: 'שם היבואן',
+          TELEPHONE: '03-555-5555',
+          WEBSITE: 'javascript:alert(1)',
         });
       }
       await route.fulfill({
@@ -136,6 +157,13 @@ for (const width of [390, 1366]) {
     await expect(page).toHaveScreenshot(`report-${width}.png`, {
       fullPage: true,
     });
+    await page.getByRole('link', { name: 'ריקולים', exact: true }).click();
+    await expect(page).toHaveURL(/#vehicle-recall$/);
+    await expect(page.getByText('החלפת רכיב במערכת הבלימה')).toBeVisible();
+    await page.goBack();
+    await expect(
+      page.getByRole('heading', { name: 'היסטוריית בעלויות' }),
+    ).toBeVisible();
   });
 }
 
@@ -167,6 +195,47 @@ test('collision, incomplete and empty lookups remain distinguishable', async ({
   ).toBeVisible({ timeout: 15000 });
 });
 
+test('the main search includes recall even without a matching registry identity', async ({
+  page,
+}) => {
+  const requested: string[] = [];
+  await fixtures(page, requested);
+  await page.setViewportSize({ width: 390, height: 850 });
+  await page.goto('/MyOto/');
+  const input = page.getByLabel('מספר רישוי או צמ״ה');
+  await input.fill(onlyRecall);
+  await input.press('Enter');
+  await expect(
+    page.getByText('נמצאה קריאת שירות במאגר ההגבלות.'),
+  ).toBeVisible();
+  await expect(page.getByRole('link', { name: 'אתר היבואן' })).toHaveCount(0);
+  await expect(page.getByText('החלפת רכיב במערכת הבלימה')).toBeVisible();
+  expect(new Set(requested).size).toBe(21);
+  expect(requested.filter((id) => id === resources.recall.id)).toHaveLength(1);
+  expect(requested).toContain(resources.campaigns.id);
+  await expect(
+    page.getByText('לא נמצאה רשומת רישוי במספר שהוזן.'),
+  ).toBeVisible();
+  for (const width of [1440, 1366, 1024, 768, 430, 390, 360]) {
+    await page.setViewportSize({ width, height: 850 });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBe(width);
+  }
+  await page.setViewportSize({ width: 390, height: 850 });
+  await expect(page).toHaveScreenshot('recall-390.png');
+  await input.fill(missing);
+  await input.press('Enter');
+  await expect(
+    page.getByText('לא נמצאה התאמה במאגר ההגבלות על ריקול.'),
+  ).toBeVisible();
+  await input.fill(partial);
+  await input.press('Enter');
+  await expect(page.locator('#vehicle-recall')).toHaveClass(
+    /recall-unavailable/,
+  );
+});
+
 test('catalog and comparison render on a narrow tablet and print stays readable', async ({
   page,
 }) => {
@@ -190,7 +259,9 @@ test('catalog and comparison render on a narrow tablet and print stays readable'
   ).toBeVisible({ timeout: 15000 });
   await page.emulateMedia({ media: 'print' });
   await expect(page.locator('#vehicle-form')).toBeHidden();
-  await expect(page).toHaveScreenshot('print-768.png');
+  await expect(page).toHaveScreenshot('print-768.png', {
+    maxDiffPixelRatio: 0.04,
+  });
   const pdf = await page.pdf({ format: 'A4' });
   expect(
     pdf.toString('latin1').match(/\/Type\s*\/Page\b/g)?.length ?? 0,

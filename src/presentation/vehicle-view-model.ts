@@ -396,19 +396,6 @@ const supplements = [
     true,
   ],
   [
-    'campaigns',
-    'פרטי קריאת השירות',
-    'triangle-alert',
-    {
-      RECALL_ID: 'מזהה קריאה',
-      OFEN_TIKUN: 'אופן תיקון',
-      YEVUAN_TEUR: 'יבואן',
-      TELEPHONE: 'טלפון',
-      WEBSITE: 'אתר היבואן',
-    },
-    false,
-  ],
-  [
     'filters',
     'מסנן פליטות לפי לוחית',
     'leaf',
@@ -429,13 +416,6 @@ export function vehicleViewModel(report: Report) {
     const row = rule && fieldRow(rule, report.fields);
     if (row) highlights.push(row);
   }
-  if (report.recalls.length)
-    highlights.push({
-      id: 'recall',
-      label: 'קריאות שירות (ריקול)',
-      icon: 'triangle-alert',
-      text: String(report.recalls.length),
-    });
   if (report.sources.disabledPermit?.rows.length)
     highlights.push({
       id: 'disabledPermit',
@@ -472,19 +452,6 @@ export function vehicleViewModel(report: Report) {
     .flatMap(([value, label]) => (value ? [{ value, label }] : []))
     .sort((a, b) => dateOrder(b.value.value) - dateOrder(a.value.value));
   const tables: DataTable[] = [];
-  if (report.recalls.length)
-    tables.push({
-      title: 'קריאות שירות (ריקול)',
-      icon: 'triangle-alert',
-      labels: ['פתיחה', 'מזהה קריאה', 'תקלה', 'תיאור'],
-      rows: report.recalls.map((row) => [
-        dateLabel(row.TAARICH_PTICHA ?? '—'),
-        String(row.RECALL_ID ?? '—'),
-        String(row.SUG_TAKALA ?? '—'),
-        String(row.TEUR_TAKALA ?? '—'),
-      ]),
-      note: 'קריאות שירות שנמצאו לפי מספר הרישוי במאגר ההגבלות.',
-    });
   if (report.ownership.length)
     tables.push({
       title: 'היסטוריית בעלויות',

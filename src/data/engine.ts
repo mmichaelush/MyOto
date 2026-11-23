@@ -1,6 +1,5 @@
 import { CkanClient, RequestBudget } from './ckan';
 import {
-  identityMatch,
   modelFilter,
   modelSources,
   plateFilter,
@@ -20,6 +19,18 @@ const regular = [
   'heavy',
   'twoWheeled',
   ...statuses,
+] as const;
+const plateSources = [
+  ...regular,
+  'recall',
+  'private_cars_2',
+  'history_1',
+  'history_2',
+  'disabledPermit',
+  'safetyDiscount',
+  'filters',
+  'busFleet',
+  'anchors',
 ] as const;
 export const registrationRequestBudget = 28;
 
@@ -55,18 +66,23 @@ export class VehicleEngine {
   ): Promise<Discovery> {
     // The two namespaces share the HTTP budget but never share source records.
     const budget = new RequestBudget(registrationRequestBudget);
-    const [registration, equipment] = await Promise.all([
+    const [equipment, registration] = await Promise.all([
+      this.lookup(input, 'equipment', signal, budget),
       this.lookup(input, 'registration', signal, budget, (report) => {
         if (!report.complete) update?.(report);
       }),
-      this.lookup(input, 'equipment', signal, budget),
     ]);
-    const check = (report: Report) =>
-      report.identity && !report.sources[report.identity]?.issue
-        ? 'found'
-        : report.outcome === 'empty'
-          ? 'empty'
-          : 'partial';
+    const check = (report: Report) => {
+      if (report.identity && !report.sources[report.identity]?.issue)
+        return 'found';
+      const scope =
+        report.domain === 'equipment' ? (['cme'] as const) : regular;
+      return scope.every(
+        (key) => report.sources[key] && !report.sources[key]?.issue,
+      )
+        ? 'empty'
+        : 'partial';
+    };
     return {
       reports: [registration, equipment],
       checks: {
@@ -114,79 +130,44 @@ export class VehicleEngine {
     if (domain === 'equipment') {
       await query('cme');
     } else {
-      await Promise.all(regular.map((key) => query(key)));
+      // The registration namespace covers every plate-indexed source.
+      await Promise.all(plateSources.map((key) => query(key)));
       const discovery = buildReport(plate, domain, sources, false);
       const base = discovery.identity
         ? sources[discovery.identity]?.rows[0]
         : undefined;
-      if (base) {
-        const isType = (key: SourceId) =>
-          discovery.identity === key ||
-          sources[key]?.rows.some(
-            (row) => identityMatch(base, row) === 'verified',
-          );
-        const lookups: Promise<void>[] = [
-          query('recall'),
-          query('disabledPermit'),
-        ];
-        if (
-          isType('private_cars_1') ||
-          isType('frozen_with_model') ||
-          isType('offRoad_1')
-        ) {
-          lookups.push(
-            query('history_1'),
-            query('history_2'),
-            query('safetyDiscount'),
-          );
-        }
-        if (isType('private_cars_1')) lookups.push(query('private_cars_2'));
-        if (
-          isType('publicTransport') &&
-          sources.publicTransport?.rows.some((row) =>
-            /^אוטובוס/.test(String(row.sug_rechev_nm ?? '')),
-          )
-        ) {
-          lookups.push(query('busFleet'));
-        }
-        if (isType('heavy') || isType('publicTransport'))
-          lookups.push(query('anchors'));
-        if (
-          isType('heavy') ||
-          isType('publicTransport') ||
-          (isType('private_cars_1') &&
-            /דיזל/.test(String(base.sug_delek_nm ?? '')))
-        )
-          lookups.push(query('filters'));
-        const filters = modelFilter(base);
-        if (filters)
-          lookups.push(...modelSources.map((key) => query(key, filters)));
-        await Promise.all(lookups);
-        const campaignIds = [
-          ...new Set(
-            sources.recall?.rows
-              .map((row) => row.RECALL_ID)
-              .filter(
-                (id): id is Exclude<Scalar, null | boolean> =>
-                  (typeof id === 'number' && id > 0) ||
-                  (typeof id === 'string' && id.trim().length > 0),
-              ),
-          ),
-        ];
-        if (campaignIds.length)
-          await query('campaigns', { RECALL_ID: campaignIds });
-      } else if (
+      const campaignIds = [
+        ...new Set(
+          (sources.recall?.rows ?? [])
+            .map((row) => row.RECALL_ID)
+            .filter(
+              (id): id is Exclude<Scalar, null | boolean> =>
+                (typeof id === 'number' && id > 0) ||
+                (typeof id === 'string' && id.trim().length > 0),
+            ),
+        ),
+      ];
+      const model = base ? modelFilter(base) : undefined;
+      const lookups = model ? modelSources.map((key) => query(key, model)) : [];
+      if (campaignIds.length)
+        lookups.push(query('campaigns', { RECALL_ID: campaignIds }));
+      if (
+        !base &&
         legacyFallback &&
+        !sources.recall?.rows.length &&
         regular.every((key) => !sources[key]?.issue)
       ) {
         // Maintain old number-only links for equipment without combining the domains.
-        await query('cme');
+        lookups.push(query('cme'));
       }
+      await Promise.all(lookups);
     }
+    const fallback =
+      domain !== 'equipment' && Boolean(sources.cme?.rows.length);
     const result = buildReport(
       plate,
-      sources.cme?.rows.length ? 'equipment' : domain,
-      sources,
+      fallback ? 'equipment' : domain,
+      fallback ? { cme: sources.cme } : sources,
       true,
     );
     update?.(result);

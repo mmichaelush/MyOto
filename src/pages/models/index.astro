@@ -2,6 +2,7 @@
 import Site from '../../layouts/Site.astro';
 import CatalogSource from '../../components/CatalogSource.astro';
 import { catalog, count } from '../../data/catalog';
+import '../../styles/catalog.css';
 const base = import.meta.env.BASE_URL + 'models/';
 const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
 ---
@@ -48,7 +49,12 @@ const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
     <datalist id="model-names"></datalist>
     <p id="model-filter-status" role="status" class="muted"></p>
   </section>
-  <section class="panel" id="model-results" aria-label="תוצאות חיפוש" hidden>
+  <section
+    class="panel catalog-directory"
+    id="model-results"
+    aria-label="תוצאות חיפוש"
+    hidden
+  >
     <div class="catalog-results-heading">
       <h2>תוצאות חיפוש</h2>
       <button class="secondary" id="catalog-reset" type="button">
@@ -57,7 +63,7 @@ const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
     </div>
     <div class="model-grid"></div>
   </section>
-  <section class="panel" id="all-makes">
+  <section class="panel catalog-directory" id="all-makes">
     <h2>רשימת יצרנים</h2>
     <div class="model-grid">
       {catalog.makes.map((make) => (

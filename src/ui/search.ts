@@ -1,9 +1,10 @@
 import { VehicleEngine } from '../data/engine';
 import { displayValue } from '../domain/format';
 import { formatPlate, parsePlate, type SearchDomain } from '../domain/plate';
-import type { Report } from '../domain/report';
+import type { Report, SourceReplies } from '../domain/report';
 import { button, element, link } from './dom';
-import { renderReport, vehicleName } from './report';
+import { renderReport, sourceDetails, vehicleName } from './report';
+import { renderRecall } from './recall-panel';
 import { mark } from './icons';
 
 const form = document.querySelector<HTMLFormElement>('#vehicle-form')!;
@@ -13,7 +14,9 @@ const output = document.querySelector<HTMLElement>('#report')!;
 const actions = document.querySelector<HTMLElement>('#actions')!;
 const saved = document.querySelector<HTMLElement>('#saved')!;
 const engine = new VehicleEngine();
+const lookup = form.closest('.lookup-hero')!;
 let controller: AbortController | undefined;
+let displayedQuery: string | undefined;
 
 type Saved = { plate: string; domain: SearchDomain };
 type SearchMode = SearchDomain | 'auto';
@@ -105,7 +108,10 @@ function renderActions(report: Report) {
   const url = address(report);
   const signal = controller?.signal;
   const actionFeedback = (content: string) => {
-    if (!signal?.aborted && actions.isConnected) message.textContent = content;
+    if (!signal?.aborted && actions.isConnected) {
+      message.classList.remove('visually-hidden');
+      message.textContent = content;
+    }
   };
   const summary = [
     vehicleName(report),
@@ -236,11 +242,12 @@ function renderActions(report: Report) {
       more,
     );
   }
-  output.querySelector('.report-summary')?.append(actions);
+  const header = output.querySelector('.report-summary');
+  header?.insertBefore(actions, header.querySelector('.report-nav'));
 }
 
-function showResult(report: Report) {
-  output.replaceChildren(renderReport(report));
+function showResult(report: Report, checked?: SourceReplies) {
+  output.replaceChildren(renderReport(report, checked));
   if (!report.identity) return;
   renderActions(report);
   const signal = controller?.signal;
@@ -276,6 +283,9 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
   input.value = domain === 'equipment' ? plate : formatPlate(plate);
   if (navigate && address({ plate, domain }).href !== location.href)
     history.pushState(null, '', address({ plate, domain }));
+  displayedQuery = location.search;
+  lookup.classList.add('lookup-active');
+  message.classList.remove('visually-hidden');
   message.textContent = 'בודק במאגרי משרד התחבורה…';
   actions.replaceChildren();
   input.removeAttribute('aria-invalid');
@@ -305,13 +315,30 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
       ),
     ];
     if (request.signal.aborted) return;
-    const matches = reports.filter((report) => report.identity);
+    const registration = reports.find(
+      (report) => report.domain === 'registration',
+    );
+    const equipmentCheck = reports.find(
+      (report) => report.domain === 'equipment',
+    )?.sources.cme;
+    const checked =
+      equipmentCheck && !equipmentCheck.rows.length
+        ? { cme: equipmentCheck }
+        : undefined;
+    const matches = reports.filter(
+      (report) => report.identity || report.recalls.length,
+    );
     const incomplete =
       discovery && Object.values(discovery.checks).includes('partial');
     if (matches.length > 1) {
       const chooser = element('section', undefined, 'panel result-chooser');
       chooser.append(
-        element('h2', 'נמצאו שני כלים עם אותו מספר'),
+        element(
+          'h2',
+          matches.every((report) => report.identity)
+            ? 'נמצאו שני כלים עם אותו מספר'
+            : 'נמצאו נתוני צמ״ה וריקול באותו מספר',
+        ),
         element('p', 'בחרו איזה דוח לפתוח.'),
       );
       const list = element('div', undefined, 'choice-grid');
@@ -319,9 +346,10 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
         const item = mark(
           button('', () => {
             history.pushState(null, '', address(report));
+            displayedQuery = location.search;
             showResult(report);
             const heading = output.querySelector<HTMLElement>(
-              '.vehicle-heading h2',
+              '.vehicle-heading h2, .recall-panel h2',
             );
             if (heading) {
               heading.tabIndex = -1;
@@ -334,9 +362,16 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
         text.append(
           element(
             'strong',
-            report.domain === 'equipment' ? 'צמ״ה' : 'רכב ברישוי רגיל',
+            report.domain === 'equipment'
+              ? 'צמ״ה'
+              : report.identity
+                ? 'רכב ברישוי רגיל'
+                : 'ריקול לפי לוחית',
           ),
-          element('bdi', vehicleName(report)),
+          element(
+            'bdi',
+            report.identity ? vehicleName(report) : formatPlate(report.plate),
+          ),
         );
         item.append(text);
         list.append(item);
@@ -345,7 +380,8 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
       output.replaceChildren(chooser);
       message.textContent = 'בדיקת המספר הסתיימה.';
     } else if (matches[0]) {
-      showResult(matches[0]);
+      showResult(matches[0], checked);
+      message.classList.toggle('visually-hidden', !incomplete);
       message.textContent = incomplete
         ? 'התקבלה התאמה. הבדיקה של אחד מסוגי הרישוי הייתה חלקית.'
         : 'הבדיקה הסתיימה.';
@@ -364,6 +400,9 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
         ),
       );
       output.replaceChildren(summary);
+      if (registration?.sources.recall)
+        output.append(renderRecall(registration, true));
+      if (registration) output.append(sourceDetails(registration, checked));
       message.textContent = '';
     } else {
       output.replaceChildren(renderReport(reports[0]));
@@ -383,6 +422,8 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
 }
 
 const fromUrl = () => {
+  if (location.search === displayedQuery) return;
+  displayedQuery = location.search;
   const parameters = new URLSearchParams(location.search);
   const plate = parsePlate(parameters.get('search') ?? '');
   const type = parameters.get('type');
@@ -400,6 +441,7 @@ const fromUrl = () => {
     message.textContent = '';
     input.value = '';
     form.classList.remove('is-searching');
+    lookup.classList.remove('lookup-active');
   }
 };
 
@@ -408,6 +450,7 @@ form.addEventListener('submit', (event) => {
   const plate = parsePlate(input.value);
   if (plate) void search(plate, 'auto', true);
   else {
+    message.classList.remove('visually-hidden');
     message.textContent = 'הזינו מספר רישוי או צמ״ה בן 4 עד 8 ספרות.';
     input.setAttribute('aria-invalid', 'true');
     input.focus();
