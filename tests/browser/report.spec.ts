@@ -134,6 +134,7 @@ test('replaces an in-flight lookup and keeps the new result and URL', async ({
 
 test('prints and downloads the report image', async ({ page }) => {
   await page.goto('/MyOto/?search=0123456');
+  await page.getByText('עוד פעולות', { exact: true }).click();
   await expect(page.getByRole('button', { name: 'תמונה PNG' })).toBeVisible();
   const image = page.waitForEvent('download');
   await page.getByRole('button', { name: 'תמונה PNG' }).click();
