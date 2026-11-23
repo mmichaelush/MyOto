@@ -1,0 +1,86 @@
+---
+import Site from '../../layouts/Site.astro';
+import CatalogSource from '../../components/CatalogSource.astro';
+import { catalog, count, totals } from '../../data/catalog';
+const base = import.meta.env.BASE_URL + 'models/';
+---
+
+<Site title="יצרנים ודגמים בישראל">
+  <section class="panel">
+    <h1>יצרנים ודגמים בישראל</h1>
+    <p>חפשו בקטלוג הנוכחי לפי יצרן, כינוי מסחרי, שנת ייצור או רמת גימור.</p>
+    <label class="control">
+      חיפוש בקטלוג
+      <input
+        id="model-filter"
+        class="text-input"
+        type="search"
+        list="model-names"
+        placeholder="לדוגמה: לנסר 2010"
+      />
+    </label>
+    <datalist id="model-names">
+      {catalog.makes.flatMap((make) =>
+        make.models.map((model) => (
+          <option value={`${make.name} ${model.aliases[0] ?? model.name}`} />
+        )),
+      )}
+    </datalist>
+    <p id="model-filter-status" role="status" class="muted"></p>
+  </section>
+  {catalog.makes.map((make) => (
+    <section class="panel" data-make>
+      <h2>
+        <a href={base + make.id + '/'}>{make.name}</a>
+      </h2>
+      <div class="model-grid">
+        {make.models.map((model) => (
+          <a
+            data-model={[
+              `${make.name} ${make.id} ${model.name}`,
+              ...model.aliases,
+              ...model.records.map((row) => row.year),
+              ...model.records.flatMap((row) =>
+                row.variants.map((variant) => variant[0]),
+              ),
+            ].join(' ')}
+            class="model-card"
+            href={`${base}${make.id}/${model.id}/`}
+          >
+            <strong>
+              <bdi>{model.name}</bdi>
+            </strong>
+            <span>
+              {count.format(totals(model.records).active)} כלי רכב פעילים
+            </span>
+          </a>
+        ))}
+      </div>
+    </section>
+  ))}
+  <CatalogSource />
+</Site>
+<script>
+  const filter = document.querySelector<HTMLInputElement>('#model-filter')!;
+  const groups = document.querySelectorAll<HTMLElement>('[data-make]');
+  const status = document.querySelector<HTMLElement>('#model-filter-status')!;
+  filter.addEventListener('input', () => {
+    const terms = filter.value
+      .toLowerCase()
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    let total = 0;
+    for (const group of groups) {
+      let matches = 0;
+      for (const card of group.querySelectorAll<HTMLElement>('[data-model]')) {
+        const searchable = card.dataset.model?.toLowerCase() ?? '';
+        card.hidden = !terms.every((term) => searchable.includes(term));
+        if (!card.hidden) matches++;
+      }
+      group.hidden = matches === 0;
+      total += matches;
+    }
+    status.textContent = terms.length ? `${total} דגמים בקטלוג` : '';
+  });
+</script>
