@@ -26,35 +26,29 @@ export function renderRecall(
   heading: 'h2' | 'h3' = 'h2',
 ) {
   const view = recallView(report);
-  const section = element(
-    'section',
-    undefined,
-    `recall-panel recall-${view.state}`,
-  );
+  const section = element('section', undefined, 'recall-panel recall-found');
   section.id = 'vehicle-recall';
   section.append(
     mark(element(heading, 'קריאות שירות (ריקול)'), 'triangle-alert'),
   );
   const summary =
-    view.state === 'found'
-      ? view.notices.length === 1
-        ? 'נמצאה קריאת שירות במאגר ההגבלות.'
-        : `נמצאו ${view.notices.length} קריאות שירות במאגר ההגבלות.`
-      : view.state === 'empty'
-        ? 'לא נמצאה התאמה במאגר ההגבלות על ריקול.'
-        : 'בדיקת מאגר הריקולים לא הושלמה.';
+    view.notices.length === 1
+      ? 'נמצאה קריאת שירות במאגר ההגבלות.'
+      : `נמצאו ${view.notices.length} רישומי קריאות שירות במאגר ההגבלות.`;
   const description = element('p', undefined, 'recall-summary');
   if (includePlate)
     description.append(element('bdi', formatPlate(report.plate)), ' · ');
   description.append(summary);
   section.append(description);
-  if (view.incomplete && view.state === 'found')
+  if (view.incomplete)
     section.append(element('p', 'חלק מתוצאות המאגר אינן זמינות כרגע.'));
   if (view.campaignUnavailable)
     section.append(
       element('p', 'פרטים נוספים על קריאת השירות אינם זמינים כרגע.', 'muted'),
     );
-  for (const item of view.notices) {
+  const more = element('details', undefined, 'recall-scope');
+  more.append(element('summary', 'קריאות שירות נוספות לאותה לוחית'));
+  for (const [index, item] of view.notices.entries()) {
     const entry = element('div', undefined, 'recall-entry');
     const title = element('div', undefined, 'recall-entry-heading');
     title.append(element(heading === 'h2' ? 'h3' : 'h4', item.title));
@@ -81,13 +75,21 @@ export function renderRecall(
     if (item.importer || item.phone || item.website) {
       const contact = element('div', undefined, 'recall-contact');
       if (item.importer) contact.append(element('strong', item.importer));
-      if (item.phone) contact.append(element('bdi', item.phone));
+      if (item.phone) {
+        const dial = item.phone.replace(/[\s().-]/g, '');
+        const number = /^(?:\+?\d{7,15}|\*\d{3,6})$/.test(dial)
+          ? link(item.phone, 'tel:' + dial)
+          : element('span', item.phone);
+        number.dir = 'ltr';
+        contact.append(number);
+      }
       const url = webAddress(item.website);
       if (url) contact.append(link('אתר היבואן', url));
       entry.append(contact);
     }
-    section.append(entry);
+    (index ? more : section).append(entry);
   }
+  if (view.notices.length > 1) section.append(more);
   const about = element('details', undefined, 'recall-scope');
   about.append(
     element('summary', 'מה המאגר מכסה?'),

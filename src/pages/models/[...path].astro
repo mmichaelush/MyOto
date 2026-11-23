@@ -7,6 +7,7 @@ import {
   catalog,
   count,
   totals,
+  totalsByYear,
   years,
   type Make,
   type Model,
@@ -35,16 +36,38 @@ const all = model?.records ?? make.models.flatMap((entry) => entry.records);
 const rows = year ? all.filter((row) => row.year === year) : all;
 const sum = totals(rows);
 const title = [make.name, model?.name, year].filter(Boolean).join(' ');
-const yearRows = model
-  ? years(model).map((value) => ({
-      year: value,
-      ...totals(all.filter((row) => row.year === value)),
-    }))
-  : [];
+const yearRows = totalsByYear(all);
 const peak = Math.max(1, ...yearRows.map((row) => row.active));
 const position = yearRows.findIndex((row) => row.year === year);
 const newer = yearRows[position - 1]?.year;
 const older = yearRows[position + 1]?.year;
+const topYear = yearRows.reduce(
+  (best, row) => (!best || row.active > best.active ? row : best),
+  yearRows[0],
+);
+const ranked =
+  !model || !year
+    ? make.models
+        .map((entry) => ({
+          ...entry,
+          active: totals(entry.records).active,
+        }))
+        .sort(
+          (a, b) => b.active - a.active || a.name.localeCompare(b.name, 'he'),
+        )
+    : [];
+const fuels = [
+  ...new Set(
+    rows.flatMap((row) =>
+      row.variants.flatMap(([, fuel]) => (fuel ? [fuel] : [])),
+    ),
+  ),
+];
+const displacements = [
+  ...new Set(
+    rows.flatMap((row) => row.variants.flatMap(([, , cc]) => (cc ? [cc] : []))),
+  ),
+].sort((a, b) => a - b);
 ---
 
 <Site title={title}>
@@ -77,11 +100,36 @@ const older = yearRows[position + 1]?.year;
         <dt>כלי רכב לא פעילים</dt>
         <dd>{count.format(sum.inactive)}</dd>
       </div>
-      <div>
-        <dt>רישומי דגם ושנתון</dt>
-        <dd>{count.format(rows.length)}</dd>
-      </div>
+      {year ? (
+        <div>
+          <dt>קודי דגם בשנה זו</dt>
+          <dd>{count.format(rows.length)}</dd>
+        </div>
+      ) : (
+        <div>
+          <dt>שנת ייצור עם הכי הרבה רכבים פעילים</dt>
+          <dd>{topYear?.active ? topYear.year : '—'}</dd>
+        </div>
+      )}
     </dl>
+    {year && (fuels.length > 0 || displacements.length > 0) && (
+      <dl class="catalog-variant-summary">
+        {fuels.length > 0 && (
+          <div>
+            <dt>דלק בגרסאות שבקטלוג</dt>
+            <dd>{fuels.join(' · ')}</dd>
+          </div>
+        )}
+        {displacements.length > 0 && (
+          <div>
+            <dt>נפחי מנוע בגרסאות</dt>
+            <dd>
+              {displacements.map((cc) => count.format(cc)).join(' · ')} סמ״ק
+            </dd>
+          </div>
+        )}
+      </dl>
+    )}
     {year && (
       <nav class="catalog-year-links" aria-label="שנתונים של הדגם">
         {newer && <a href={modelUrl + newer + '/'}>שנתון {newer}</a>}
@@ -92,18 +140,27 @@ const older = yearRows[position + 1]?.year;
   </section>
   {!model && (
     <section class="panel catalog-directory">
-      <h2>דגמים בקטלוג</h2>
+      <h2>דגמים לפי כמות פעילה</h2>
+      <label class="control maker-filter" hidden>
+        חיפוש בין דגמי היצרן
+        <input class="text-input" type="search" placeholder="שם דגם" />
+      </label>
+      <p class="maker-filter-status muted" role="status" hidden></p>
       <div class="model-grid">
-        {make.models.map((entry) => (
-          <a class="model-card" href={`${makeUrl}${entry.id}/`}>
+        {ranked.map((entry) => (
+          <a
+            class="model-card"
+            data-model-names={[entry.name, ...entry.aliases].join(' ')}
+            href={`${makeUrl}${entry.id}/`}
+          >
             <bdi>{entry.name}</bdi>{' '}
-            <span>{count.format(totals(entry.records).active)} פעילים</span>
+            <span>{count.format(entry.active)} פעילים</span>
           </a>
         ))}
       </div>
     </section>
   )}
-  {model && !year && (
+  {!year && (
     <section class="panel catalog-data">
       <h2>כלי רכב לפי שנת ייצור</h2>
       <div
@@ -124,7 +181,11 @@ const older = yearRows[position + 1]?.year;
             {yearRows.map((row) => (
               <tr>
                 <th scope="row">
-                  <a href={`${modelUrl}${row.year}/`}>{row.year}</a>
+                  {model ? (
+                    <a href={`${modelUrl}${row.year}/`}>{row.year}</a>
+                  ) : (
+                    row.year
+                  )}
                 </th>
                 <td>
                   {count.format(row.active)}
@@ -233,7 +294,7 @@ const older = yearRows[position + 1]?.year;
     <section class="panel catalog-directory">
       <h2>דגמים נוספים של {make.name}</h2>
       <div class="model-grid">
-        {make.models
+        {ranked
           .filter((item) => item.id !== model.id)
           .slice(0, 6)
           .map((item) => (
@@ -247,3 +308,31 @@ const older = yearRows[position + 1]?.year;
   )}
   <CatalogSource />
 </Site>
+<script>
+  import { normalizeCatalogTerm } from '../../presentation/catalog-search';
+  const filter = document.querySelector<HTMLElement>('.maker-filter');
+  const input = filter?.querySelector('input');
+  const status = document.querySelector<HTMLElement>('.maker-filter-status');
+  if (filter && input && status) {
+    filter.hidden = false;
+    status.hidden = false;
+    const entries = [
+      ...document.querySelectorAll<HTMLElement>('[data-model-names]'),
+    ];
+    input.addEventListener('input', () => {
+      const query = normalizeCatalogTerm(input.value);
+      let count = 0;
+      for (const entry of entries) {
+        entry.hidden = !normalizeCatalogTerm(
+          entry.dataset.modelNames ?? '',
+        ).includes(query);
+        if (!entry.hidden) count++;
+      }
+      status.textContent = query
+        ? count
+          ? `${count} דגמים תואמים`
+          : 'לא נמצאו דגמים תואמים.'
+        : '';
+    });
+  }
+</script>

@@ -5,10 +5,12 @@ import {
   dateOrder,
   displayValue,
   fieldLabels,
-  quarter,
+  expiredDays,
+  ownershipDate,
 } from '../domain/format';
 import { formatPlate } from '../domain/plate';
-import type { Field, Observation, Report } from '../domain/report';
+import { issueText } from '../domain/diagnostics';
+import { fieldPriority, type Observation, type Report } from '../domain/report';
 
 export type VehicleKind = 'car' | 'motorcycle' | 'truck' | 'bus' | 'equipment';
 export const statusLabels = {
@@ -18,17 +20,8 @@ export const statusLabels = {
   conflicting: 'מידע סותר על מצב הרישוי',
   unknown: 'מצב הרישוי לא אומת',
 };
-const issues = {
-  network: 'המאגר לא היה נגיש',
-  timeout: 'המאגר לא הגיב בזמן',
-  http: 'תקלה במאגר',
-  'invalid-response': 'התקבלה תשובה לא תקינה',
-  schema: 'התקבלה רשומה בפורמט שונה',
-  incomplete: 'התקבלו נתונים חלקיים',
-  budget: 'הבדיקה לא הושלמה',
-};
 export function sourceResult(reply: Reply) {
-  if (reply.issue) return issues[reply.issue];
+  if (reply.issue) return issueText(reply.issue, reply.httpStatus);
   return reply.rows.length ? 'נמצאו נתונים' : 'לא נמצאה התאמה';
 }
 const clock = new Intl.DateTimeFormat('he-IL', {
@@ -71,6 +64,7 @@ export type DataRow = {
   label: string;
   text: string;
   icon?: string;
+  warning?: string;
   help?: string;
   differences?: { source: string; text: string }[];
 };
@@ -118,10 +112,10 @@ const rules: Record<string, Partial<DisplayRule>> = {
     label: 'ארץ ייצור',
   },
   sug_rechev_EU_cd: {
-    keys: ['sug_rechev_EU_cd', 'tkina_EU'],
     label: 'סיווג אירופי (EU)',
     help: 'קטגוריית כלי הרכב כפי שדווחה במקור.',
   },
+  tkina_EU: { label: 'תקינה אירופית' },
   tokef_dt: { label: 'תוקף רישוי', order: 10, icon: 'clipboard-check' },
   tokef_date: {
     label: 'תוקף רישום צמ״ה',
@@ -234,13 +228,23 @@ function textFor(key: string, value: Scalar, unit?: string) {
 
 function fieldRow(
   rule: DisplayRule,
-  fields: Record<string, Field>,
+  report: Pick<Report, 'fields' | 'identity'>,
+  today?: Date,
 ): DataRow | undefined {
+  const { fields, identity } = report;
   const observations = rule.keys.flatMap((key) => {
     const field = fields[key];
     return field ? [field.chosen, ...field.alternatives] : [];
   });
-  const first = observations[0];
+  const first = observations.reduce<Observation | undefined>(
+    (preferred, candidate) =>
+      !preferred ||
+      fieldPriority(rule.id, candidate.source, identity) <
+        fieldPriority(rule.id, preferred.source, identity)
+        ? candidate
+        : preferred,
+    undefined,
+  );
   if (!first) return;
   const normal = (value: Observation) => {
     const text = String(value.value).trim().replace(/\s+/g, ' ').toUpperCase();
@@ -260,11 +264,18 @@ function fieldRow(
       source: resources[observation.source].label,
       text: textFor(rule.id, observation.value, rule.unit),
     }));
+  const overdue =
+    today && rule.id === 'tokef_dt' && !differences.length
+      ? expiredDays(first.value, today)
+      : 0;
   return {
     id: rule.id,
     label: rule.label,
     text: textFor(rule.id, first.value, rule.unit),
-    icon: rule.icon,
+    icon: rule.icon ?? categories[rule.category].icon,
+    warning: overdue
+      ? `תוקף הרישיון פג לפני ${overdue === 1 ? 'יום אחד' : new Intl.NumberFormat('he-IL').format(overdue) + ' ימים'}`
+      : undefined,
     help: rule.help,
     differences: differences.length
       ? [
@@ -297,11 +308,15 @@ const priority: Partial<Record<VehicleKind, Category[]>> = {
   bus: ['identity', 'registration', 'bus', 'dimensions'],
   equipment: ['identity', 'equipment', 'registration', 'dimensions'],
 };
-const baseSections = (report: Report, kind: VehicleKind) => {
+export const baseSections = (
+  report: Report,
+  kind = vehicleKind(report),
+  today?: Date,
+) => {
   const order = [...new Set([...(priority[kind] ?? []), ...defaultOrder])];
   const rows = fieldSchema.flatMap((rule) => {
     if (rule.kinds && !rule.kinds.includes(kind)) return [];
-    const row = fieldRow(rule, report.fields);
+    const row = fieldRow(rule, report, today);
     return row
       ? [
           {
@@ -338,7 +353,7 @@ function supplement(
           const label =
             map[key] ?? (allowMapped ? fieldLabels[key]?.label : undefined);
           return label && value !== null && value !== ''
-            ? [{ id: key, label, text: displayValue(key, value) }]
+            ? [{ id: key, label, text: displayValue(key, value), icon }]
             : [];
         }),
       )
@@ -404,7 +419,7 @@ const supplements = [
   ],
 ] as const;
 
-export function vehicleViewModel(report: Report) {
+export function vehicleViewModel(report: Report, today = new Date()) {
   const kind = vehicleKind(report);
   const highlights: DataRow[] = [];
   for (const id of [
@@ -413,7 +428,7 @@ export function vehicleViewModel(report: Report) {
     'baalut',
   ]) {
     const rule = fieldSchema.find((field) => field.id === id);
-    const row = rule && fieldRow(rule, report.fields);
+    const row = rule && fieldRow(rule, report, today);
     if (row) highlights.push(row);
   }
   if (report.sources.disabledPermit?.rows.length)
@@ -434,7 +449,7 @@ export function vehicleViewModel(report: Report) {
     alerts.push('הדוח חלקי. לפחות מאגר אחד לא היה זמין או מסר מידע חסר.');
   if (report.sources.safetyDiscount?.rows.length)
     alerts.push(
-      'קיים רישום במאגר הזכאות להתקנת מערכת בטיחות. אפשר לבדוק זכאות מול משרד התחבורה.',
+      'הלוחית מופיעה ברשימת כלי הרכב שעשויים לקבל הנחה באגרת הרישוי לאחר התקנת מערכת בטיחות. את הזכאות בפועל בודק משרד התחבורה.',
     );
   if (report.sources.anchors?.rows.length)
     alerts.push('הרכב מופיע במאגר חובת התקנת נקודות עיגון.');
@@ -450,16 +465,32 @@ export function vehicleViewModel(report: Report) {
     .flatMap(([value, label]) => (value ? [{ value, label }] : []))
     .sort((a, b) => dateOrder(b.value.value) - dateOrder(a.value.value));
   const tables: DataTable[] = [];
+  // Without trader IDs, count distinct reported periods, not people or businesses.
+  const dealerPeriods = new Set(
+    report.ownership
+      .filter(
+        ({ baalut }) =>
+          typeof baalut === 'string' && /^סוחר(?:\s|$)/.test(baalut.trim()),
+      )
+      .map(({ baalut_dt }) =>
+        baalut_dt == null ? '' : ownershipDate(baalut_dt),
+      )
+      .filter((period) => period && period !== 'מועד לא זמין'),
+  ).size;
+  if (dealerPeriods >= 3)
+    alerts.push(
+      `ברישומי הלוחית מופיעה בעלות מסוג סוחר ב־${dealerPeriods} תקופות שונות. כדאי לעיין בהיסטוריית הבעלויות ולבקש תיעוד.`,
+    );
   if (report.ownership.length)
     tables.push({
       title: 'היסטוריית בעלויות',
       icon: 'users',
       labels: ['מועד', 'סוג בעלות'],
       rows: report.ownership.map((row) => [
-        quarter(row.baalut_dt ?? null),
+        ownershipDate(row.baalut_dt ?? null),
         String(row.baalut ?? 'לא זמין'),
       ]),
-      note: `${report.ownership.length} רישומים לפי לוחית. התאריכים מדווחים לפי רבעון והכיסוי עשוי להיות חלקי.`,
+      note: `${report.ownership.length} רישומים לפי לוחית. כשהמאגר מוסר תקופה בלבד, מוצג טווח החודשים. השיוך לרכב הנוכחי אינו מאומת.`,
     });
   if (timeline.length)
     tables.push({
@@ -495,6 +526,13 @@ export function vehicleViewModel(report: Report) {
       });
   }
   const primary = report.identity ? report.sources[report.identity] : undefined;
+  const shown = new Set(highlights.map(({ id }) => id));
+  const sections = baseSections(report, kind).flatMap((section) => {
+    const groups = section.groups
+      .map((group) => group.filter(({ id }) => !shown.has(id)))
+      .filter((group) => group.length);
+    return groups.length ? [{ ...section, groups }] : [];
+  });
   return {
     kind,
     title: vehicleName(report),
@@ -517,7 +555,7 @@ export function vehicleViewModel(report: Report) {
     highlights,
     alerts,
     tables,
-    sections: baseSections(report, kind),
+    sections,
     additional,
   };
 }

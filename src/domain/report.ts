@@ -53,7 +53,7 @@ const active = new Set<SourceId>([
 ]);
 const archived = new Set<SourceId>(statuses);
 
-function fieldPriority(
+export function fieldPriority(
   field: string,
   source: SourceId,
   identity: SourceId | undefined,

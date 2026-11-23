@@ -53,7 +53,7 @@ test('opens a legacy link, renders safe text, saves and exports', async ({
   await page.getByRole('button', { name: 'מועדף' }).click();
   await expect(page.getByRole('heading', { name: 'מועדפים' })).toBeVisible();
   await page.getByRole('button', { name: 'שיתוף קישור' }).click();
-  await expect(page.getByRole('status')).toHaveText('הקישור הועתק.');
+  await expect(page.locator('#search-status')).toHaveText('הקישור הועתק.');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
     '?search=0123456',
   );
@@ -146,4 +146,22 @@ test('prints and downloads the report image', async ({ page }) => {
   ).toBeVisible();
   const pdf = await page.pdf({ format: 'A4' });
   expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+});
+
+test('runs lookup inside an iframe whose host includes no script', async ({
+  page,
+}) => {
+  await page.route('**/fixture-host/', (route) =>
+    route.fulfill({
+      contentType: 'text/html',
+      body: '<iframe title="בדיקת רכב" src="/MyOto/embed/" width="100%" height="720"></iframe>',
+    }),
+  );
+  await page.goto('/fixture-host/');
+  const lookup = page.frameLocator('iframe');
+  await lookup.getByLabel('מספר רישוי או צמ״ה').fill('0123456');
+  await lookup.getByRole('button', { name: 'חיפוש רכב' }).click();
+  await expect(
+    lookup.getByRole('heading', { name: 'היסטוריית בעלויות' }),
+  ).toBeVisible();
 });

@@ -95,6 +95,30 @@ body:has(.catalog-heading) {
   font-weight: 720;
   font-size: clamp(1.1rem, 3.2vw, 1.6rem);
 }
+.catalog-variant-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1.5rem;
+  margin-block: 0.75rem 0.2rem;
+}
+.catalog-variant-summary dt {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.catalog-variant-summary dd {
+  margin: 0;
+  font-weight: 650;
+}
+.maker-filter {
+  max-inline-size: 24rem;
+  margin-block: 0.8rem 0.5rem;
+}
+.maker-filter-status {
+  margin-block: 0.25rem 0.5rem;
+}
+.maker-filter-status:empty {
+  display: none;
+}
 .catalog-data .table-scroll {
   font-size: 0.91rem;
 }

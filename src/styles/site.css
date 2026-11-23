@@ -85,22 +85,9 @@ a {
   text-decoration: none;
 }
 .brand-mark {
-  display: inline-grid;
-  place-items: center;
-  width: 1.85rem;
-  height: 1.32rem;
-  border: 2px solid #113361;
-  border-inline-start-width: 0.42rem;
-  border-radius: 0.32rem;
-  background: #ffcd4b;
-}
-.brand-mark::after {
-  content: '';
-  width: 0.75rem;
-  height: 0.13rem;
-  background: #113361;
-  box-shadow: 0 0.23rem #113361;
-  transform: translateY(-0.12rem);
+  flex: none;
+  inline-size: 2.1rem;
+  block-size: 2.1rem;
 }
 main {
   padding-block: clamp(1rem, 4vw, 3rem);
@@ -552,6 +539,8 @@ select,
 }
 .table-scroll {
   overflow-x: auto;
+  border: 1px solid #c4d4e7;
+  border-radius: 0.45rem;
 }
 table {
   width: 100%;
@@ -564,6 +553,21 @@ td {
   border-bottom: 1px solid var(--line);
   text-align: start;
   vertical-align: top;
+}
+th + th,
+td + td,
+th + td {
+  border-inline-start: 1px solid var(--line);
+}
+thead th {
+  color: #17365c;
+  background: #e6effd;
+}
+tbody tr:nth-child(even):not(.different) {
+  background: #f5f8fd;
+}
+tbody:last-child tr:last-child > * {
+  border-block-end: 0;
 }
 th {
   background: var(--light);

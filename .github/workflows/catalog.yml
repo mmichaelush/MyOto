@@ -1,0 +1,55 @@
+name: Refresh catalog from official sources
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '40 4 5 * *'
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: catalog-refresh
+  cancel-in-progress: false
+jobs:
+  refresh:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/refresh-catalog.mjs --skip-unchanged
+      - name: Check for an updated snapshot
+        id: snapshot
+        shell: bash
+        run: |
+          if ! git diff --quiet -- src/data/catalog.json; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+      - run: npm run verify
+        if: steps.snapshot.outputs.changed == 'true'
+      - uses: actions/upload-artifact@v4
+        if: steps.snapshot.outputs.changed == 'true'
+        with:
+          name: catalog-update
+          path: src/data/catalog.json
+      - name: Propose the verified snapshot
+        if: steps.snapshot.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          branch="automation/catalog-${GITHUB_RUN_ID}"
+          git switch -c "$branch"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/data/catalog.json
+          git commit -m 'Refresh the national vehicle catalog'
+          git push origin "$branch"
+          gh pr create --draft --base "$BASE_BRANCH" --head "$branch" \
+            --title 'Refresh the national vehicle catalog' \
+            --body "Source revision checked and npm run verify passed in workflow run ${GITHUB_RUN_ID}."

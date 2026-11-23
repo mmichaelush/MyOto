@@ -78,3 +78,32 @@ test('keeps a failed namespace visible alongside the result from the other one',
   });
   expect(result.reports[1].sources.cme?.httpStatus).toBe(503);
 });
+
+test('comparison fetches the 13 sources used for specifications and recall status', async () => {
+  const fetcher = vi.fn<typeof fetch>(async (input) => {
+    const id = new URL(String(input)).searchParams.get('resource_id');
+    return reply(
+      id === resources.private_cars_1.id
+        ? [
+            {
+              mispar_rechev: 12345678,
+              tozeret_cd: 10,
+              degem_cd: 20,
+              sug_degem: 'P',
+              shnat_yitzur: 2021,
+            },
+          ]
+        : id === resources.recall.id
+          ? [{ MISPAR_RECHEV: 12345678, RECALL_ID: 90 }]
+          : [],
+    );
+  });
+  const report = await new VehicleEngine(new CkanClient(fetcher)).comparison(
+    '12345678',
+    signal(),
+  );
+  expect(fetcher).toHaveBeenCalledTimes(13);
+  expect(report.recalls).toHaveLength(1);
+  expect(report.sources.campaigns).toBeUndefined();
+  expect(report.sources.modelDetails).toBeUndefined();
+});

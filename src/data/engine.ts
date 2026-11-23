@@ -32,6 +32,12 @@ const plateSources = [
   'busFleet',
   'anchors',
 ] as const;
+const comparisonSources = [
+  ...regular,
+  'recall',
+  'private_cars_2',
+  'history_1',
+] as const;
 export const registrationRequestBudget = 28;
 
 export type Discovery = {
@@ -56,6 +62,18 @@ export class VehicleEngine {
       new RequestBudget(domain === 'equipment' ? 6 : registrationRequestBudget),
       update,
       legacyFallback && domain === 'registration',
+    );
+  }
+
+  comparison(input: string, signal: AbortSignal) {
+    return this.lookup(
+      input,
+      'registration',
+      signal,
+      new RequestBudget(registrationRequestBudget),
+      undefined,
+      false,
+      'comparison',
     );
   }
 
@@ -99,6 +117,7 @@ export class VehicleEngine {
     budget: RequestBudget,
     update?: (report: Report) => void,
     legacyFallback = false,
+    mode: 'full' | 'comparison' = 'full',
   ): Promise<Report> {
     const plate = parsePlate(input);
     if (!plate)
@@ -131,7 +150,13 @@ export class VehicleEngine {
       await query('cme');
     } else {
       // The registration namespace covers every plate-indexed source.
-      await Promise.all(plateSources.map((key) => query(key)));
+      await Promise.all(
+        (mode === 'comparison' ? comparisonSources : plateSources).map((key) =>
+          query(key),
+        ),
+      );
+      if (mode === 'comparison')
+        return buildReport(plate, domain, sources, true);
       const discovery = buildReport(plate, domain, sources, false);
       const base = discovery.identity
         ? sources[discovery.identity]?.rows[0]

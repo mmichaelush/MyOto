@@ -11,6 +11,7 @@ import {
 import { element, link } from './dom';
 import { icon, mark } from './icons';
 import { renderRecall } from './recall-panel';
+import { arrangeReport } from './report-layout';
 
 export { statusLabels, vehicleName } from '../presentation/vehicle-view-model';
 
@@ -18,9 +19,11 @@ function dataRow(data: DataRow, highlight = false) {
   const row = element('div', undefined, highlight ? 'data-metric' : 'data-row');
   row.dataset.field = data.id;
   const label = element('dt', data.label);
-  if (highlight && data.icon) mark(label, data.icon);
+  if (data.icon) mark(label, data.icon);
   const value = element('dd');
   value.append(element('bdi', data.text));
+  if (data.warning)
+    value.append(element('small', data.warning, 'field-warning'));
   if (data.help || data.differences?.length) {
     const details = element('details', undefined, 'field-disclosure');
     const summary = element('summary', undefined, 'with-icon');
@@ -113,6 +116,11 @@ export function sourceDetails(report: Report, checked: SourceReplies = {}) {
         `${update ? 'עודכן ' + update : 'נשלף ' + fetched} · `,
       );
     information.append(link('למאגר הרשמי', resource.url));
+    if (key === 'recall' && !reply.rows.length && !reply.issue)
+      information.append(
+        ' · המאגר כולל הגבלות שנרשמו לאחר שלא בוצע ריקול. אפשר לברר קריאות חדשות מול היבואן.',
+      );
+    if (reply.httpStatus) information.append(` · HTTP ${reply.httpStatus}`);
     item.append(summary, information);
     item.addEventListener('toggle', () => {
       if (item.open && reply.rows.length && !item.querySelector('pre')) {
@@ -127,7 +135,7 @@ export function sourceDetails(report: Report, checked: SourceReplies = {}) {
 export function renderReport(report: Report, checked?: SourceReplies) {
   const article = element('article', undefined, 'vehicle-report');
   const recall =
-    report.complete && report.sources.recall
+    report.complete && report.recalls.length
       ? renderRecall(report, !report.identity, report.identity ? 'h3' : 'h2')
       : undefined;
   if (!report.identity) {
@@ -158,6 +166,14 @@ export function renderReport(report: Report, checked?: SourceReplies) {
     title.append(
       element('p', view.status, `vehicle-status status-${report.status}`),
     );
+  if (recall) {
+    const reminder = mark(
+      link('רשומת ריקול במאגר ההגבלות', '#vehicle-recall'),
+      'triangle-alert',
+    );
+    reminder.classList.add('recall-reminder');
+    title.append(reminder);
+  }
   const plate = element('div', undefined, 'plate report-plate');
   plate.dir = 'ltr';
   plate.append(
@@ -196,15 +212,14 @@ export function renderReport(report: Report, checked?: SourceReplies) {
     ...view.sections.map(dataSection),
     ...view.additional.map(dataSection),
   );
-  const history = element('div', undefined, 'report-sections');
-  history.id = 'vehicle-history';
-  history.append(...view.tables.map(dataTable));
+  const history = view.tables.map(dataTable);
+  if (history[0]) history[0].id = 'vehicle-history';
+  details.append(...history);
   const nav = element('nav', undefined, 'report-nav');
   nav.setAttribute('aria-label', 'ניווט בתוך הדוח');
   if (details.children.length)
     nav.append(link('מפרט ורישוי', '#vehicle-details'));
-  if (history.children.length) nav.append(link('היסטוריה', '#vehicle-history'));
-  if (recall) nav.append(link('ריקולים', '#vehicle-recall'));
+  if (history.length) nav.append(link('היסטוריה', '#vehicle-history'));
   const sourceLink = link('מקורות המידע', '#report-sources');
   sourceLink.addEventListener('click', () => {
     sources.open = true;
@@ -213,7 +228,7 @@ export function renderReport(report: Report, checked?: SourceReplies) {
   summary.append(nav);
   if (recall) article.append(recall);
   if (details.children.length) article.append(details);
-  if (history.children.length) article.append(history);
+  if (details.children.length > 1) nav.append(arrangeReport(details));
   article.append(sources);
   return article;
 }

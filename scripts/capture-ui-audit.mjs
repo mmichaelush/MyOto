@@ -81,18 +81,15 @@ async function captureFields(page, legacy) {
         },
       );
     }
-    return [...document.querySelectorAll('.data-row[data-field]')].map(
-      (node) => ({
-        keys: [node.dataset.field],
-        label: node.querySelector('dt')?.textContent.trim(),
-        text: node.querySelector('dd > bdi')?.textContent.trim(),
-        section: node
-          .closest('section')
-          ?.querySelector('h3')
-          ?.textContent.trim(),
-        conflicting: Boolean(node.querySelector('.field-disclosure small')),
-      }),
-    );
+    return [
+      ...document.querySelectorAll(':is(.data-row, .data-metric)[data-field]'),
+    ].map((node) => ({
+      keys: [node.dataset.field],
+      label: node.querySelector('dt')?.textContent.trim(),
+      text: node.querySelector('dd > bdi')?.textContent.trim(),
+      section: node.closest('section')?.querySelector('h3')?.textContent.trim(),
+      conflicting: Boolean(node.querySelector('.field-disclosure small')),
+    }));
   }, legacy);
   let selected;
   const menu = page.locator('.report-more > summary');

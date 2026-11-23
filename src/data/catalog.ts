@@ -41,4 +41,22 @@ export function years(model: Model) {
   );
 }
 
+export function totalsByYear(rows: Variant[]) {
+  const byYear = new Map<
+    number,
+    { year: number; active: number; inactive: number }
+  >();
+  for (const row of rows) {
+    const total = byYear.get(row.year) ?? {
+      year: row.year,
+      active: 0,
+      inactive: 0,
+    };
+    total.active += row.active;
+    total.inactive += row.inactive;
+    byYear.set(row.year, total);
+  }
+  return [...byYear.values()].sort((a, b) => b.year - a.year);
+}
+
 export const count = new Intl.NumberFormat('he-IL');

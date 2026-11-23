@@ -9,7 +9,11 @@ const partial = '71234567';
 const onlyRecall = '61234567';
 const dataHost = 'https://data.gov.il';
 
-async function fixtures(page: Page, requested: string[] = []) {
+async function fixtures(
+  page: Page,
+  requested: string[] = [],
+  expiry = '2027-04-07',
+) {
   await page.clock.setFixedTime(new Date('2026-11-23T10:00:00Z'));
   await page.route(
     (url) =>
@@ -57,7 +61,7 @@ async function fixtures(page: Page, requested: string[] = []) {
           koah_sus: 122,
           automatic_ind: 1,
           ramat_gimur: 'STYLE',
-          tokef_dt: '2027-04-07',
+          tokef_dt: expiry,
           mivchan_acharon_dt: '2026-04-07',
           mispar_kariot_avir: 7,
           abs_ind: 1,
@@ -166,7 +170,9 @@ for (const width of [390, 1366]) {
         .getByRole('region', { name: 'היסטוריית בעלויות' })
         .locator('tbody tr'),
     ).toHaveCount(8);
-    await page.getByRole('link', { name: 'ריקולים', exact: true }).click();
+    await page
+      .getByRole('link', { name: 'רשומת ריקול במאגר ההגבלות', exact: true })
+      .click();
     await expect(page).toHaveURL(/#vehicle-recall$/);
     await expect(page.getByText('החלפת רכיב במערכת הבלימה')).toBeVisible();
     await page.goBack();
@@ -196,7 +202,8 @@ test('collision, incomplete and empty lookups remain distinguishable', async ({
   await expect(page.getByRole('heading', { name: 'הבדיקה חלקית' })).toBeVisible(
     { timeout: 15000 },
   );
-  await expect(page.getByText(/צמ״ה: נבדק ולא נמצאה התאמה/)).toBeVisible();
+  await expect(page.getByText(/בצמ״ה לא נמצאה התאמה/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'נסה שוב' })).toBeVisible();
   await expect(page).toHaveScreenshot('partial-390.png');
   await page.goto(`/MyOto/?search=${missing}`);
   await expect(
@@ -238,13 +245,76 @@ test('the main search includes recall even without a matching registry identity'
   await input.fill(missing);
   await input.press('Enter');
   await expect(
-    page.getByText('לא נמצאה התאמה במאגר ההגבלות על ריקול.'),
+    page.getByRole('heading', { name: 'לא נמצאה התאמה', exact: true }),
   ).toBeVisible();
+  await expect(page.locator('#vehicle-recall')).toHaveCount(0);
   await input.fill(partial);
   await input.press('Enter');
-  await expect(page.locator('#vehicle-recall')).toHaveClass(
-    /recall-unavailable/,
-  );
+  await expect(
+    page.getByRole('heading', { name: 'הבדיקה חלקית' }),
+  ).toBeVisible();
+  await expect(page.locator('#vehicle-recall')).toHaveCount(0);
+  await page.locator('#report-sources > summary').click();
+  await expect(
+    page
+      .locator('#report-sources summary')
+      .filter({ hasText: /ריקול.*אינו זמין/ }),
+  ).toBeVisible();
+});
+
+test('report controls keep their location and section order survives reload', async ({
+  page,
+}) => {
+  await fixtures(page);
+  await page.setViewportSize({ width: 390, height: 850 });
+  await page.goto(`/MyOto/?search=${registration}`);
+  const more = page.locator('.report-more > summary');
+  await expect(more).toHaveText('עוד פעולות');
+  const closed = await more.boundingBox();
+  await more.click();
+  await expect(more).toHaveText('הסתר פעולות');
+  const open = await more.boundingBox();
+  expect(open?.x).toBeCloseTo(closed?.x ?? 0, 0);
+  expect(open?.y).toBeCloseTo(closed?.y ?? 0, 0);
+  await more.click();
+  await page.getByRole('button', { name: 'סידור הדוח' }).click();
+  const section = page.locator('#vehicle-details > section').first();
+  const title = (await section.locator('h3').textContent())!;
+  await section.getByRole('button', { name: `הזזת ${title} למטה` }).click();
+  await expect(
+    page.locator('#vehicle-details > section').nth(1).locator('h3'),
+  ).toHaveText(title);
+  await page.reload();
+  await expect(
+    page.locator('#vehicle-details > section').nth(1).locator('h3'),
+  ).toHaveText(title);
+});
+
+test('a registered vehicle shows elapsed license validity and a dated mileage drop', async ({
+  page,
+}) => {
+  await fixtures(page, [], '2026-11-01');
+  await page.goto('/MyOto/');
+  await page.evaluate(async () => {
+    const digest = await crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode('JTNFAKE1123456789'),
+    );
+    const key = Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, '0'),
+    ).join('');
+    localStorage.setItem(
+      'myoto-test-mileage',
+      JSON.stringify([{ key, date: '2025-04-07', km: 90210 }]),
+    );
+  });
+  await page.getByLabel('מספר רישוי או צמ״ה').fill(registration);
+  await page.getByLabel('מספר רישוי או צמ״ה').press('Enter');
+  await expect(page.getByText('תוקף הרישיון פג לפני 22 ימים')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'נמדדה ירידה בקילומטראז׳' }),
+  ).toBeVisible();
+  await expect(page.getByText(/90,210.*86,541/)).toBeVisible();
 });
 
 test('catalog and comparison render on a narrow tablet and print stays readable', async ({

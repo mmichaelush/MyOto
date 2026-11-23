@@ -1,11 +1,16 @@
 import { VehicleEngine } from '../data/engine';
-import { dateLabel, displayValue, fieldLabels } from '../domain/format';
+import { displayValue } from '../domain/format';
 import { formatPlate, parsePlate } from '../domain/plate';
-import type { Field, Report } from '../domain/report';
+import type { Report } from '../domain/report';
 import { button, element, link } from './dom';
-import { statusLabels, vehicleName } from '../presentation/vehicle-view-model';
+import {
+  baseSections,
+  statusLabels,
+  vehicleName,
+  type DataRow,
+} from '../presentation/vehicle-view-model';
 import { mark } from './icons';
-import { resources } from '../data/sources';
+import { logFailure, logLookup } from './diagnostics';
 
 const engine = new VehicleEngine();
 const form = document.querySelector<HTMLFormElement>('#compare')!;
@@ -17,6 +22,7 @@ const highlights = [
   ['ramat_gimur', 'רמת גימור'],
   ['kilometer_test_aharon', 'קילומטראז׳ בטסט האחרון'],
   ['baalut', 'בעלות רשומה'],
+  ['tokef_dt', 'תוקף רישיון'],
 ];
 
 function reportLink(report: Report) {
@@ -26,19 +32,8 @@ function reportLink(report: Report) {
   return link(formatPlate(report.plate), url.href);
 }
 
-function normalized(key: string, field: Field) {
-  const value = String(field.chosen.value)
-    .normalize('NFKC')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .toLowerCase();
-  const format = fieldLabels[key]?.format;
-  if (format === 'date') return dateLabel(field.chosen.value);
-  if (format === 'bool')
-    return value === 'true' ? '1' : value === 'false' ? '0' : value;
-  return format === 'number' && value !== '' && Number.isFinite(Number(value))
-    ? Number(value)
-    : value;
+function normalized(value: string) {
+  return value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 function snapshot(report: Report, side: string) {
@@ -70,6 +65,18 @@ function snapshot(report: Report, side: string) {
     element('dt', 'סטטוס רישוי'),
     element('dd', statusLabels[report.status]),
   );
+  if (report.sources.recall)
+    data.append(
+      element('dt', 'מאגר הגבלות ריקול'),
+      element(
+        'dd',
+        report.recalls.length
+          ? 'נמצאה רשומה'
+          : report.sources.recall.issue
+            ? 'הבדיקה לא הושלמה'
+            : 'לא נמצאה התאמה',
+      ),
+    );
   card.append(data);
   return card;
 }
@@ -106,14 +113,27 @@ function comparison(reports: Report[]) {
   }
   for (const column of header.cells) column.scope = 'col';
   const groups = new Map<string, HTMLTableSectionElement>();
-  for (const [key, spec] of Object.entries(fieldLabels)) {
-    const entries = reports.map((report) => report.fields[key]);
-    if (entries.every((entry) => !entry)) continue;
-    let group = groups.get(spec.category);
+  const sides = reports.map(
+    (report) =>
+      new Map(
+        baseSections(report).flatMap((section) =>
+          section.groups
+            .flat()
+            .map((row) => [row.id, { section: section.title, row }] as const),
+        ),
+      ),
+  );
+  const ids = new Set(sides.flatMap((entries) => [...entries.keys()]));
+  for (const key of ids) {
+    const entries: (DataRow | undefined)[] = sides.map(
+      (side) => side.get(key)?.row,
+    );
+    const field = sides[0].get(key) ?? sides[1].get(key)!;
+    let group = groups.get(field.section);
     if (!group) {
       group = table.createTBody();
-      groups.set(spec.category, group);
-      const separator = element('th', spec.category);
+      groups.set(field.section, group);
+      const separator = element('th', field.section);
       separator.colSpan = 3;
       separator.scope = 'rowgroup';
       group.insertRow().append(separator);
@@ -123,28 +143,19 @@ function comparison(reports: Report[]) {
     if (
       left &&
       right &&
-      !left.conflicting &&
-      !right.conflicting &&
-      normalized(key, left) !== normalized(key, right)
+      !left.differences &&
+      !right.differences &&
+      normalized(left.text) !== normalized(right.text)
     )
       row.className = 'different';
-    const label = element('th', spec.label);
+    const label = element('th', field.row.label);
     label.scope = 'row';
     row.append(label);
     for (const entry of entries) {
       const cell = row.insertCell();
-      cell.append(
-        element(
-          'bdi',
-          entry ? displayValue(key, entry.chosen.value) : 'לא זמין',
-        ),
-      );
-      if (entry?.conflicting) {
-        const origin = resources[entry.chosen.source];
-        const note = element('small', 'מקורות חלוקים · ');
-        note.append(link(origin.label, origin.url));
-        cell.append(note);
-      }
+      cell.append(element('bdi', entry ? entry.text : 'לא זמין'));
+      if (entry?.differences)
+        cell.append(element('small', 'ערכים שונים במקורות'));
     }
   }
   const differenceCount = table.querySelectorAll('tr.different').length;
@@ -170,10 +181,15 @@ function comparison(reports: Report[]) {
     toggle.setAttribute('aria-pressed', 'false');
     tools.append(toggle);
   }
+  const scroll = element('div', undefined, 'table-scroll');
+  scroll.setAttribute('role', 'region');
+  scroll.setAttribute('aria-label', 'נתוני השוואה');
+  scroll.tabIndex = 0;
+  scroll.append(table);
   details.append(
     tools,
     summary,
-    groups.size ? table : element('p', 'טרם נמצאו שדות להשוואה.'),
+    groups.size ? scroll : element('p', 'טרם נמצאו שדות להשוואה.'),
   );
   result.replaceChildren(cards, details);
 }
@@ -210,17 +226,10 @@ async function compare(updateUrl: boolean) {
   status.textContent = 'בודק את שני כלי הרכב…';
   try {
     const reports = await Promise.all(
-      [a, b].map((plate) =>
-        engine.search(
-          plate,
-          'registration',
-          controller.signal,
-          undefined,
-          false,
-        ),
-      ),
+      [a, b].map((plate) => engine.comparison(plate, controller.signal)),
     );
     if (controller.signal.aborted) return;
+    logLookup('comparison', reports);
     comparison(reports);
     result.hidden = false;
     status.textContent = Object.values(reports).some((report) =>
@@ -228,9 +237,11 @@ async function compare(updateUrl: boolean) {
     )
       ? 'ההשוואה כוללת מידע חלקי ממקורות זמינים.'
       : 'הבדיקה הסתיימה.';
-  } catch {
-    if (!controller.signal.aborted)
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      logFailure('comparison', error);
       status.textContent = 'ההשוואה נכשלה. אפשר לנסות שוב.';
+    }
   }
 }
 

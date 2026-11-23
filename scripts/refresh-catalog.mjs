@@ -92,6 +92,15 @@ async function metadata() {
 }
 
 const generation = await metadata();
+if (process.argv.includes('--skip-unchanged')) {
+  const existing = await read(output).catch((error) => {
+    if (error.code !== 'ENOENT') throw error;
+  });
+  if (JSON.stringify(existing?.generation) === JSON.stringify(generation)) {
+    console.log('Catalog source revisions are unchanged');
+    process.exit(0);
+  }
+}
 await mkdir(cache, { recursive: true });
 const marker = new URL('generation.json', cache);
 const old = await read(marker).catch((error) => {

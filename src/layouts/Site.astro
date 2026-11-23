@@ -5,6 +5,7 @@ const {
   title,
   description = 'מידע על כלי רכב בישראל ממקורות ממשלתיים',
   privatePage = false,
+  embedded = false,
 } = Astro.props;
 const base = import.meta.env.BASE_URL;
 ---
@@ -17,49 +18,61 @@ const base = import.meta.env.BASE_URL;
     <meta name="description" content={description} />
     <meta name="referrer" content="no-referrer" />
     {privatePage && <meta name="robots" content="noindex,follow" />}
-    <link rel="icon" href={base + 'favicon.ico'} />
+    <link rel="icon" href={base + 'myoto.svg'} type="image/svg+xml" />
     <title>{title} | MyOto</title>
   </head>
   <body>
     <a class="skip" href="#main">
       דילוג לתוכן
     </a>
-    <header class="site-header">
-      <nav class="wrap" aria-label="ניווט ראשי">
-        <a class="brand" href={base}>
-          <span class="brand-mark" aria-hidden="true"></span>
-          <bdi>MyOto</bdi>
-        </a>
-        <a
-          href={base}
-          aria-current={Astro.url.pathname === base ? 'page' : undefined}
-        >
-          בדיקת רכב
-        </a>
-        <a
-          href={base + 'models/'}
-          aria-current={
-            Astro.url.pathname.startsWith(base + 'models/') ? 'page' : undefined
-          }
-        >
-          יצרנים ודגמים
-        </a>
-        <a
-          href={base + 'compare/'}
-          aria-current={
-            Astro.url.pathname === base + 'compare/' ? 'page' : undefined
-          }
-        >
-          השוואת רכבים
-        </a>
-      </nav>
-    </header>
+    {!embedded && (
+      <header class="site-header">
+        <nav class="wrap" aria-label="ניווט ראשי">
+          <a class="brand" href={base}>
+            <img
+              class="brand-mark"
+              src={base + 'myoto.svg'}
+              width="34"
+              height="34"
+              alt=""
+            />
+            <bdi>MyOto</bdi>
+          </a>
+          <a
+            href={base}
+            aria-current={Astro.url.pathname === base ? 'page' : undefined}
+          >
+            בדיקת רכב
+          </a>
+          <a
+            href={base + 'models/'}
+            aria-current={
+              Astro.url.pathname.startsWith(base + 'models/')
+                ? 'page'
+                : undefined
+            }
+          >
+            יצרנים ודגמים
+          </a>
+          <a
+            href={base + 'compare/'}
+            aria-current={
+              Astro.url.pathname === base + 'compare/' ? 'page' : undefined
+            }
+          >
+            השוואת רכבים
+          </a>
+        </nav>
+      </header>
+    )}
     <main class="wrap" id="main">
       <slot />
     </main>
-    <footer class="wrap footer">
-      <a href="https://github.com/mmichaelush/MyOto">MyOto</a>
-      <a href={base + 'privacy/'}>פרטיות ומקורות</a>
-    </footer>
+    {!embedded && (
+      <footer class="wrap footer">
+        <a href="https://github.com/mmichaelush/MyOto">MyOto</a>
+        <a href={base + 'privacy/'}>פרטיות ומקורות</a>
+      </footer>
+    )}
   </body>
 </html>

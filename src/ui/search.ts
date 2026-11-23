@@ -6,6 +6,8 @@ import { button, element, link } from './dom';
 import { renderReport, sourceDetails, vehicleName } from './report';
 import { renderRecall } from './recall-panel';
 import { mark } from './icons';
+import { failedSources, logFailure, logLookup } from './diagnostics';
+import { mileageAlert, mileageStorageKey } from './mileage-history';
 
 const form = document.querySelector<HTMLFormElement>('#vehicle-form')!;
 const input = document.querySelector<HTMLInputElement>('#plate')!;
@@ -53,10 +55,24 @@ function same(a: Saved, b: Saved) {
 }
 
 function address(entry: { plate: string; domain: SearchMode }) {
-  const url = new URL(import.meta.env.BASE_URL, location.origin);
+  const base = import.meta.env.BASE_URL;
+  const url = new URL(
+    location.pathname === base + 'embed/' ? base + 'embed/' : base,
+    location.origin,
+  );
   url.searchParams.set('search', entry.plate);
   if (entry.domain !== 'auto') url.searchParams.set('type', entry.domain);
+  if (new URLSearchParams(location.search).get('debug') === '1')
+    url.searchParams.set('debug', '1');
   return url;
+}
+
+function navigateTo(url: URL) {
+  try {
+    if (url.href !== location.href) history.pushState(null, '', url);
+  } catch (error) {
+    logFailure('update-address', error);
+  }
 }
 
 function renderSaved() {
@@ -72,7 +88,16 @@ function renderSaved() {
     title.append(
       element('h2', heading),
       button('ניקוי ' + heading, () => {
-        if (write(key, [])) renderSaved();
+        if (write(key, [])) {
+          if (key === 'myoto-recent') {
+            try {
+              localStorage.removeItem(mileageStorageKey);
+            } catch (error) {
+              logFailure('clear-mileage', error);
+            }
+          }
+          renderSaved();
+        }
       }),
     );
     const list = element('ul', undefined, 'saved-items');
@@ -125,7 +150,8 @@ function renderActions(report: Report) {
     try {
       await navigator.clipboard.writeText(value);
       actionFeedback(success);
-    } catch {
+    } catch (error) {
+      logFailure('copy', error);
       actionFeedback('ההעתקה לא זמינה בדפדפן זה. אפשר להעתיק משורת הכתובת.');
     }
   };
@@ -157,7 +183,13 @@ function renderActions(report: Report) {
     String(read('myoto-favorites').some((item) => same(item, report))),
   );
   const more = element('details', undefined, 'report-more');
-  more.append(mark(element('summary', 'עוד פעולות'), 'ellipsis'));
+  const menuLabel = element('span', 'עוד פעולות');
+  const trigger = mark(element('summary'), 'chevron-down');
+  trigger.append(menuLabel);
+  more.append(trigger);
+  more.addEventListener('toggle', () => {
+    menuLabel.textContent = more.open ? 'הסתר פעולות' : 'עוד פעולות';
+  });
   const menu = element('div', undefined, 'report-action-list');
   menu.append(
     save,
@@ -203,7 +235,8 @@ function renderActions(report: Report) {
             setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
           }),
         )
-        .catch(() => {
+        .catch((error) => {
+          logFailure('export-image', error);
           actionFeedback('יצירת התמונה נכשלה. אפשר לשמור את הדוח כ־PDF.');
         });
     }),
@@ -253,13 +286,17 @@ function showResult(report: Report, checked?: SourceReplies) {
   const signal = controller?.signal;
   const article = output.firstElementChild;
   if (signal && report.fields.kilometer_test_aharon) {
+    void mileageAlert(report, signal).then((alert) => {
+      if (alert && !signal.aborted)
+        article?.querySelector('.report-summary')?.after(alert);
+    });
     void import('./mileage')
       .then(({ mileageComparison }) => {
         if (signal.aborted) return;
         const comparison = mileageComparison(report);
         if (comparison) article?.append(comparison);
       })
-      .catch(() => {});
+      .catch((error) => logFailure('mileage-comparison', error));
   }
   if (signal)
     void import('./model-link')
@@ -267,7 +304,9 @@ function showResult(report: Report, checked?: SourceReplies) {
       .then((anchor) => {
         if (anchor && !signal.aborted) actions.append(anchor);
       })
-      .catch(() => {});
+      .catch((error) => {
+        if (!signal.aborted) logFailure('catalog-link', error);
+      });
   const entry = { plate: report.plate, domain: report.domain };
   write('myoto-recent', [
     entry,
@@ -281,8 +320,7 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
   const request = new AbortController();
   controller = request;
   input.value = domain === 'equipment' ? plate : formatPlate(plate);
-  if (navigate && address({ plate, domain }).href !== location.href)
-    history.pushState(null, '', address({ plate, domain }));
+  if (navigate) navigateTo(address({ plate, domain }));
   displayedQuery = location.search;
   lookup.classList.add('lookup-active');
   message.classList.remove('visually-hidden');
@@ -315,6 +353,7 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
       ),
     ];
     if (request.signal.aborted) return;
+    logLookup('search', reports);
     const registration = reports.find(
       (report) => report.domain === 'registration',
     );
@@ -345,7 +384,7 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
       for (const report of matches) {
         const item = mark(
           button('', () => {
-            history.pushState(null, '', address(report));
+            navigateTo(address(report));
             displayedQuery = location.search;
             showResult(report);
             const heading = output.querySelector<HTMLElement>(
@@ -386,21 +425,49 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
         ? 'התקבלה התאמה. הבדיקה של אחד מסוגי הרישוי הייתה חלקית.'
         : 'הבדיקה הסתיימה.';
     } else if (discovery) {
-      const messages = {
-        empty: 'נבדק ולא נמצאה התאמה',
-        partial: 'הבדיקה לא הושלמה',
-        found: 'נמצאה התאמה',
-      };
       const summary = element('section', undefined, 'panel notice');
+      const unavailable =
+        discovery.checks.registration === 'partial' &&
+        discovery.checks.equipment === 'partial';
       summary.append(
-        element('h2', incomplete ? 'הבדיקה חלקית' : 'לא נמצאה התאמה'),
+        element(
+          'h2',
+          unavailable
+            ? 'לא ניתן לבדוק את המספר כרגע'
+            : incomplete
+              ? 'הבדיקה חלקית'
+              : 'לא נמצאה התאמה',
+        ),
         element(
           'p',
-          `רישוי רגיל: ${messages[discovery.checks.registration]}. צמ״ה: ${messages[discovery.checks.equipment]}.`,
+          unavailable
+            ? 'מאגרי הרישוי והצמ״ה לא החזירו תשובה מלאה. אפשר לנסות שוב.'
+            : incomplete
+              ? discovery.checks.registration === 'partial'
+                ? 'בצמ״ה לא נמצאה התאמה. חלק ממאגרי הרישוי לא החזירו תשובה מלאה.'
+                : 'ברישוי רגיל לא נמצאה התאמה. מאגר הצמ״ה לא החזיר תשובה מלאה.'
+              : 'המספר לא נמצא במאגרי הרישוי והצמ״ה שנבדקו. כדאי לבדוק את הספרות ולהזין שוב.',
         ),
       );
+      if (incomplete) {
+        const failures = failedSources(reports);
+        const first = failures[0];
+        if (first)
+          summary.append(
+            element(
+              'p',
+              `${first.name} · ${first.text}${failures.length > 1 ? ` · ועוד ${failures.length - 1} במקורות המידע` : ''}`,
+              'muted',
+            ),
+          );
+        summary.append(
+          button('נסה שוב', () => {
+            void search(plate, domain, false);
+          }),
+        );
+      }
       output.replaceChildren(summary);
-      if (registration?.sources.recall)
+      if (registration?.recalls.length)
         output.append(renderRecall(registration, true));
       if (registration) output.append(sourceDetails(registration, checked));
       message.textContent = '';
@@ -408,8 +475,9 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
       output.replaceChildren(renderReport(reports[0]));
       message.textContent = '';
     }
-  } catch {
+  } catch (error) {
     if (!request.signal.aborted) {
+      logFailure('search', error);
       message.textContent = 'הבדיקה נכשלה. אפשר לנסות שוב.';
       output.querySelector('.skeleton')?.remove();
     }
