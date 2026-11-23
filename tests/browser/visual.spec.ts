@@ -288,6 +288,13 @@ test('report controls keep their location and section order survives reload', as
   await expect(
     page.locator('#vehicle-details > section').nth(1).locator('h3'),
   ).toHaveText(title);
+  await page.getByRole('button', { name: 'סידור הדוח' }).click();
+  await page
+    .locator('#vehicle-details > section')
+    .nth(1)
+    .locator('.drag-handle')
+    .dragTo(section.locator('h3'));
+  await expect(section.locator('h3')).toHaveText(title);
 });
 
 test('a registered vehicle shows elapsed license validity and a dated mileage drop', async ({

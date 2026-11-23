@@ -17,6 +17,7 @@ export type Model = {
   records: Variant[];
 };
 export type Make = { id: string; name: string; models: Model[] };
+const rankedByMake = new WeakMap<Make, (Model & { active: number })[]>();
 type Catalog = {
   updatedAt: string;
   fetchedAt: string;
@@ -33,6 +34,16 @@ export function totals(rows: Variant[]) {
     }),
     { active: 0, inactive: 0 },
   );
+}
+
+export function rankedModels(make: Make) {
+  const previous = rankedByMake.get(make);
+  if (previous) return previous;
+  const ranked = make.models
+    .map((entry) => ({ ...entry, active: totals(entry.records).active }))
+    .sort((a, b) => b.active - a.active || a.name.localeCompare(b.name, 'he'));
+  rankedByMake.set(make, ranked);
+  return ranked;
 }
 
 export function years(model: Model) {

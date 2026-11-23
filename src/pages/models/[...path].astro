@@ -2,12 +2,14 @@
 import Site from '../../layouts/Site.astro';
 import CatalogSource from '../../components/CatalogSource.astro';
 import Cohort from '../../components/Cohort.astro';
+import MakeModels from '../../components/MakeModels.astro';
 import '../../styles/catalog.css';
 import {
   catalog,
   count,
   totals,
   totalsByYear,
+  rankedModels,
   years,
   type Make,
   type Model,
@@ -45,17 +47,7 @@ const topYear = yearRows.reduce(
   (best, row) => (!best || row.active > best.active ? row : best),
   yearRows[0],
 );
-const ranked =
-  !model || !year
-    ? make.models
-        .map((entry) => ({
-          ...entry,
-          active: totals(entry.records).active,
-        }))
-        .sort(
-          (a, b) => b.active - a.active || a.name.localeCompare(b.name, 'he'),
-        )
-    : [];
+const ranked = model && !year ? rankedModels(make) : [];
 const fuels = [
   ...new Set(
     rows.flatMap((row) =>
@@ -138,28 +130,7 @@ const displacements = [
       </nav>
     )}
   </section>
-  {!model && (
-    <section class="panel catalog-directory">
-      <h2>דגמים לפי כמות פעילה</h2>
-      <label class="control maker-filter" hidden>
-        חיפוש בין דגמי היצרן
-        <input class="text-input" type="search" placeholder="שם דגם" />
-      </label>
-      <p class="maker-filter-status muted" role="status" hidden></p>
-      <div class="model-grid">
-        {ranked.map((entry) => (
-          <a
-            class="model-card"
-            data-model-names={[entry.name, ...entry.aliases].join(' ')}
-            href={`${makeUrl}${entry.id}/`}
-          >
-            <bdi>{entry.name}</bdi>{' '}
-            <span>{count.format(entry.active)} פעילים</span>
-          </a>
-        ))}
-      </div>
-    </section>
-  )}
+  {!model && <MakeModels {make} {makeUrl} />}
   {!year && (
     <section class="panel catalog-data">
       <h2>כלי רכב לפי שנת ייצור</h2>
@@ -308,31 +279,3 @@ const displacements = [
   )}
   <CatalogSource />
 </Site>
-<script>
-  import { normalizeCatalogTerm } from '../../presentation/catalog-search';
-  const filter = document.querySelector<HTMLElement>('.maker-filter');
-  const input = filter?.querySelector('input');
-  const status = document.querySelector<HTMLElement>('.maker-filter-status');
-  if (filter && input && status) {
-    filter.hidden = false;
-    status.hidden = false;
-    const entries = [
-      ...document.querySelectorAll<HTMLElement>('[data-model-names]'),
-    ];
-    input.addEventListener('input', () => {
-      const query = normalizeCatalogTerm(input.value);
-      let count = 0;
-      for (const entry of entries) {
-        entry.hidden = !normalizeCatalogTerm(
-          entry.dataset.modelNames ?? '',
-        ).includes(query);
-        if (!entry.hidden) count++;
-      }
-      status.textContent = query
-        ? count
-          ? `${count} דגמים תואמים`
-          : 'לא נמצאו דגמים תואמים.'
-        : '';
-    });
-  }
-</script>
