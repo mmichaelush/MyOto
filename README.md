@@ -18,6 +18,8 @@ npm run preview -- --host 127.0.0.1 --port 4322
 
 ## שינוי מקורות ועמודים
 
+החיפוש הראשי בודק מספר אחד בשני תחומי רישוי. כשמתקבלות שתי התאמות, כל אחת נפתחת כדוח נפרד. קישורים ישנים עם `?search=` עובדים בחיפוש האוטומטי. קישור עם `type=registration` או `type=equipment` מגביל את הבדיקה לתחום שנבחר.
+
 - מוסיפים מזהה משאב ומקור רשמי ב־`src/data/resources.json`, כללי מפתח והצלבה ב־`src/data/sources.ts` ושילוב במסלול המתאים ב־`src/data/engine.ts`. מוסיפים את מפתחות החוזה ל־`scripts/check-sources.mjs` ומכסים מצבי הצלחה, ריק ושגיאה בבדיקות.
 - שדות תצוגה ותיקים מוגדרים ב־`src/domain/labels.json`. כללי מיזוג שייכים ל־`src/domain/report.ts` ועיצוב תאריכים וערכים ל־`src/domain/format.ts`.
 - מוסיפים עמודי Astro ב־`src/pages` וקישורים דרך `import.meta.env.BASE_URL`. עמודי קטלוג מקבלים נתיבים מתצלום הנתונים ומייצרים HTML בזמן הבנייה.
@@ -27,4 +29,4 @@ npm run preview -- --host 127.0.0.1 --port 4322
 
 בדיקת המקורות החיה נפרדת מהבדיקות האוטומטיות המקומיות. מריצים `node --use-system-ca scripts/check-sources.mjs` כדי לאמת סכמה, מסננים מדויקים ועימוד ארכיון מול הספק. [כיסוי מקורות וחוזה הייצוא](docs/source-coverage.md)
 
-[ארכיטקטורה](docs/architecture.md) · [סקירת שבעת ה־PRs](docs/review-round-2.md) · [אימות ו־QA](docs/validation.md) · [שחרור וחזרה לגרסה קודמת](docs/release.md) · [רישיון הנתונים](https://data.gov.il/he/terms-of-use) · [אתר הייצור](https://mmichaelush.github.io/MyOto/)
+[ארכיטקטורה](docs/architecture.md) · [סקירת שבעת ה־PRs](docs/review-round-2.md) · [אימות ו־QA](docs/validation.md) · [סקירת UI וצילומי מסך](docs/ui-restoration.md) · [שחרור וחזרה לגרסה קודמת](docs/release.md) · [רישיון הנתונים](https://data.gov.il/he/terms-of-use) · [אתר הייצור](https://mmichaelush.github.io/MyOto/)
