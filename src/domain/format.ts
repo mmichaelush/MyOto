@@ -7,6 +7,19 @@ export const fieldLabels: Record<
 > = labels;
 const number = new Intl.NumberFormat('he-IL');
 
+export function dateOrder(value: Scalar | undefined) {
+  const text = String(value ?? '');
+  const match = /^(\d{4})-?(\d{2})(?:-?(\d{2}))?(?:$|[T ])/.exec(text);
+  if (!match) return 0;
+  const [, y, m, d = '01'] = match;
+  const utc = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+  return utc.getUTCFullYear() === Number(y) &&
+    utc.getUTCMonth() + 1 === Number(m) &&
+    utc.getUTCDate() === Number(d)
+    ? utc.valueOf()
+    : 0;
+}
+
 export function dateLabel(value: Scalar) {
   const text = String(value);
   const iso = /^(\d{4})-(\d{2})-(\d{2})(?:$|[T ])/.exec(text);
