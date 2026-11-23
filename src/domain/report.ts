@@ -143,6 +143,9 @@ export function buildReport(
           unverified.add(key);
       }
     }
+    for (const key of observations) {
+      if (sources[key]?.rows.length && !accepted.has(key)) unverified.add(key);
+    }
   }
   const keys = [...accepted.keys()];
   const listed = keys.some((key) => active.has(key));

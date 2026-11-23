@@ -429,9 +429,7 @@ export function vehicleViewModel(report: Report) {
       'בחלק מהמקורות מופיעים פרטי רכב אחר באותו מספר. הנתונים נשמרו בנפרד.',
     );
   if (report.unverified.length)
-    alerts.push(
-      'השיוך של חלק מהנתונים לרכב הזה לא אומת. הפרטים מופיעים במקורות המידע.',
-    );
+    alerts.push('רישומים שהשיוך שלהם לרכב הזה לא אומת מוצגים בנפרד.');
   if (Object.values(report.sources).some((reply) => reply.issue))
     alerts.push('הדוח חלקי. לפחות מאגר אחד לא היה זמין או מסר מידע חסר.');
   if (report.sources.safetyDiscount?.rows.length)
@@ -481,7 +479,7 @@ export function vehicleViewModel(report: Report) {
   const history = report.sources.history_1?.rows;
   if (history?.length && report.unverified.includes('history_1')) {
     const section = supplement(
-      'מידע מטסט לפי לוחית',
+      'טסט ושינויי מבנה לפי לוחית',
       'gauge',
       history,
       {

@@ -74,3 +74,34 @@ test('only highlights available data and puts equipment-specific information fir
       ?.text,
   ).toBe('4 טון');
 });
+
+test('shows history by plate separately when a non-private registration cannot verify it', () => {
+  const report = buildReport(
+    '11234567',
+    'registration',
+    {
+      heavy: reply({ mispar_rechev: 11234567, mispar_manoa: 'ABC123456' }),
+      history_1: reply({
+        mispar_rechev: 11234567,
+        mispar_manoa: 'XYZ654321',
+        kilometer_test_aharon: 87500,
+        rishum_rishon_dt: '2020-03-02',
+      }),
+    },
+    true,
+  );
+  const view = vehicleViewModel(report);
+  expect(report.unverified).toContain('history_1');
+  expect(report.fields.kilometer_test_aharon).toBeUndefined();
+  expect(
+    view.highlights.some((row) => row.id === 'kilometer_test_aharon'),
+  ).toBe(false);
+  const history = view.additional.find(
+    (section) => section.title === 'טסט ושינויי מבנה לפי לוחית',
+  );
+  expect(history?.note).toContain('ההתאמה לרכב הנוכחי לא אומתה');
+  expect(
+    history?.groups.flat().find((row) => row.id === 'kilometer_test_aharon')
+      ?.text,
+  ).toContain('87,500');
+});
