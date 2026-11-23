@@ -2,10 +2,44 @@
 import Site from '../layouts/Site.astro';
 ---
 
-<Site title="בדיקת רכב">
+<Site title="בדיקת רכב לפי מספר רישוי" privatePage={true}>
   <section class="panel hero">
-    <h1>בדיקת פרטי רכב</h1>
-    <p>נתוני רישוי ומפרט ממאגרי משרד התחבורה.</p>
-    <a href="https://mmichaelush.github.io/MyOto/">פתיחת הבדיקה באתר הפעיל</a>
+    <h1>בדיקת רכב לפי מספר רישוי</h1>
+    <p>פרטי רישוי, מפרט, בעלויות וקריאות שירות ממאגרי משרד התחבורה.</p>
+    <form id="vehicle-form" class="search">
+      <div class="control">
+        <label for="plate">מספר רישוי או צמ״ה</label>
+        <div class="plate plate-input" dir="ltr">
+          <span class="plate-country" aria-hidden="true">
+            IL
+          </span>
+          <input
+            id="plate"
+            name="search"
+            inputmode="numeric"
+            autocomplete="off"
+            placeholder="12-345-67"
+            maxlength="18"
+            required
+          />
+        </div>
+      </div>
+      <div class="control">
+        <label for="domain">סוג בדיקה</label>
+        <select id="domain">
+          <option value="registration">מספר רישוי</option>
+          <option value="equipment">מספר צמ״ה</option>
+        </select>
+      </div>
+      <button type="submit">חיפוש רכב</button>
+    </form>
+    <noscript>כדי לבדוק רכב, יש להפעיל JavaScript בדפדפן.</noscript>
   </section>
+  <p id="search-status" role="status" class="muted"></p>
+  <div id="actions" class="actions" aria-label="פעולות דוח"></div>
+  <div id="report"></div>
+  <aside id="saved" class="panel" hidden></aside>
 </Site>
+<script>
+  import '../ui/search';
+</script>
