@@ -1,12 +1,8 @@
-import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
+import legacy from '../../index.html?raw';
 import { fieldLabels } from '../../src/domain/format';
 
 test('retains the labelled field inventory from the published legacy report', () => {
-  const legacy = readFileSync(
-    new URL('../../index.html', import.meta.url),
-    'utf8',
-  );
   const dictionary = /const FIELD_LABELS = \{([\s\S]+?)\n\s*\};/.exec(
     legacy,
   )?.[1];
