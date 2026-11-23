@@ -154,9 +154,18 @@ for (const width of [390, 1366]) {
     await expect(
       page.locator('.data-row').filter({ hasText: 'מספר שלדה' }),
     ).toHaveCount(1);
+    // Long mobile layouts can wrap text onto a different line in Chromium on Linux.
+    // Compare the same viewport there and verify the long table independently.
+    const mobile = width === 390;
     await expect(page).toHaveScreenshot(`report-${width}.png`, {
-      fullPage: true,
+      fullPage: !mobile,
+      maxDiffPixelRatio: mobile ? 0.04 : 0.025,
     });
+    await expect(
+      page
+        .getByRole('region', { name: 'היסטוריית בעלויות' })
+        .locator('tbody tr'),
+    ).toHaveCount(8);
     await page.getByRole('link', { name: 'ריקולים', exact: true }).click();
     await expect(page).toHaveURL(/#vehicle-recall$/);
     await expect(page.getByText('החלפת רכיב במערכת הבלימה')).toBeVisible();
@@ -223,7 +232,9 @@ test('the main search includes recall even without a matching registry identity'
     ).toBe(width);
   }
   await page.setViewportSize({ width: 390, height: 850 });
-  await expect(page).toHaveScreenshot('recall-390.png');
+  await expect(page).toHaveScreenshot('recall-390.png', {
+    maxDiffPixelRatio: 0.04,
+  });
   await input.fill(missing);
   await input.press('Enter');
   await expect(
