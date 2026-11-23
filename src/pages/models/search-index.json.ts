@@ -1,12 +1,8 @@
-import { catalog, years } from '../../data/catalog';
-
-export type CatalogSearchItem = {
-  path: string;
-  make: string;
-  name: string;
-  search: string;
-  years: number[];
-};
+import { catalog, totals, years } from '../../data/catalog';
+import {
+  normalizeCatalogTerm,
+  type CatalogSearchItem,
+} from '../../presentation/catalog-search';
 
 export function GET() {
   const index = catalog.makes.flatMap((make) =>
@@ -18,22 +14,15 @@ export function GET() {
         ),
       );
       const path = `${make.id}/${model.id}`;
-      const search = [
-        make.name,
-        make.id,
-        model.name,
-        ...model.aliases,
-        ...modelYears,
-        ...trims,
-      ]
-        .join(' ')
-        .normalize('NFKC')
-        .toLowerCase()
-        .replace(/[-–—]/g, ' ');
+      const search = normalizeCatalogTerm(
+        [make.name, make.id, model.name, ...model.aliases, ...trims].join(' '),
+      );
       return {
         path,
         make: make.name,
         name: model.name,
+        aliases: model.aliases,
+        active: totals(model.records).active,
         search,
         years: modelYears,
       };
