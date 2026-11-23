@@ -249,6 +249,12 @@ async function search(plate: string, domain: SearchDomain, navigate: boolean) {
     message.textContent = result.identity ? 'הבדיקה הסתיימה.' : '';
     if (result.identity) {
       renderActions(result);
+      void import('./model-link')
+        .then(({ modelLink }) => modelLink(result, request.signal))
+        .then((anchor) => {
+          if (anchor && !request.signal.aborted) actions.append(anchor);
+        })
+        .catch(() => {});
       const entry = { plate: result.plate, domain: result.domain };
       write('myoto-recent', [
         entry,
