@@ -76,3 +76,18 @@ test('fits a mobile viewport and links into comparison', async ({ page }) => {
   await expect(page.getByLabel('רכב ראשון')).toHaveValue('0123456');
   await expect(page.getByLabel('רכב שני')).toHaveValue('');
 });
+
+test('prints and downloads the report image', async ({ page }) => {
+  await page.goto('/MyOto/?search=0123456');
+  await expect(page.getByRole('button', { name: 'תמונה PNG' })).toBeVisible();
+  const image = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'תמונה PNG' }).click();
+  expect((await image).suggestedFilename()).toBe('car-0123456.png');
+  await page.emulateMedia({ media: 'print' });
+  await expect(page.locator('#vehicle-form')).toBeHidden();
+  await expect(
+    page.getByRole('heading', { name: 'היסטוריית בעלויות' }),
+  ).toBeVisible();
+  const pdf = await page.pdf({ format: 'A4' });
+  expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+});

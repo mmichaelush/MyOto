@@ -221,6 +221,38 @@ export function renderReport(report: Report) {
     );
   if (!report.complete) return article;
 
+  const timeline: string[][] = [];
+  const initial = report.fields.rishum_rishon_dt?.chosen;
+  const test = report.fields.mivchan_acharon_dt?.chosen;
+  if (initial)
+    timeline.push([
+      dateLabel(initial.value),
+      'רישום ראשון',
+      resources[initial.source].label,
+    ]);
+  if (test)
+    timeline.push([
+      dateLabel(test.value),
+      'מבחן רישוי אחרון',
+      resources[test.source].label,
+    ]);
+  for (const id of ['offRoad_1', 'offRoad_2', 'offRoad_3'] as const) {
+    if (report.separated.includes(id)) continue;
+    for (const row of report.sources[id]?.rows ?? []) {
+      const date = row.bitul_dt ?? row.taarich_bitzul;
+      if (date)
+        timeline.push([dateLabel(date), 'ביטול רישום', resources[id].label]);
+    }
+  }
+  if (timeline.length) {
+    const section = element('section', undefined, 'panel');
+    section.append(
+      element('h3', 'מועדים ברישוי'),
+      rowsTable(['מועד', 'אירוע', 'מקור'], timeline),
+    );
+    article.append(section);
+  }
+
   if (report.ownership.length) {
     const ownership = element('section', undefined, 'panel');
     ownership.append(
