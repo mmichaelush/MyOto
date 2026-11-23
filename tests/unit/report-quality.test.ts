@@ -1,6 +1,5 @@
 import { expect, test } from 'vitest';
 import { expiredDays, ownershipDate } from '../../src/domain/format';
-import { previousReading, readingFor } from '../../src/domain/mileage-history';
 import { buildReport } from '../../src/domain/report';
 import { vehicleViewModel } from '../../src/presentation/vehicle-view-model';
 import type { Row } from '../../src/data/types';
@@ -55,7 +54,7 @@ test('repeated dealer rows in the same period do not count as distinct owners', 
   ).toBe(false);
 });
 
-test('mileage history compares distinct test days for a verified vehicle', () => {
+test('an independent registry date never dates the mileage reading', () => {
   const registration = source({
     misgeret: 'JTNFAKE1123456789',
     mispar_manoa: 'ENGINE12345',
@@ -71,17 +70,60 @@ test('mileage history compares distinct test days for a verified vehicle', () =>
     { private_cars_1: registration, history_1: history },
     true,
   );
-  const current = readingFor(report)?.reading;
-  expect(current).toEqual({ date: '2026-06-04', km: 80000 });
+  const view = vehicleViewModel(report);
+  const reading = view.highlights.find(
+    (row) => row.id === 'kilometer_test_aharon',
+  );
+  expect(reading?.text).toBe('80,000 ק״מ');
+  expect(reading?.help).toContain('ללא תאריך המדידה');
+  expect(reading?.warning).toBeUndefined();
   expect(
-    previousReading(
-      [
-        { date: '2026-06-04', km: 88000 },
-        { date: '2025-01-01', km: 90000 },
-        { date: '2026-03-12', km: 94000 },
-      ],
-      current!,
-    ),
-  ).toEqual({ date: '2026-03-12', km: 94000 });
-  expect(readingFor({ ...report, unverified: ['history_1'] })).toBeUndefined();
+    view.tables.find((table) => table.id === 'registration-timeline')?.rows,
+  ).toContainEqual(['04/06/2026', 'מבחן רישוי אחרון']);
+
+  const changed = [
+    ['11234567', registration, history],
+    [
+      '11234567',
+      source({ ...registration.rows[0], mivchan_acharon_dt: '2026-09-04' }),
+      history,
+    ],
+    [
+      '11234567',
+      registration,
+      source({ ...history.rows[0], kilometer_test_aharon: 79000 }),
+    ],
+    [
+      '22345678',
+      registration,
+      source({ ...history.rows[0], mispar_manoa: 'UNCERTAIN' }),
+    ],
+  ] as const;
+  for (const [number, officialRegistry, officialMileage] of changed) {
+    const changedView = vehicleViewModel(
+      buildReport(
+        number,
+        'registration',
+        {
+          private_cars_1: officialRegistry,
+          history_1: officialMileage,
+        },
+        true,
+      ),
+    );
+    expect(
+      changedView.highlights.find((row) => row.id === 'kilometer_test_aharon')
+        ?.warning,
+    ).toBeUndefined();
+    expect(
+      changedView.alerts.some((message) => message.includes('ירידה בנסועה')),
+    ).toBe(false);
+    if (number !== '11234567') {
+      expect(
+        changedView.highlights.some(
+          (row) => row.id === 'kilometer_test_aharon',
+        ),
+      ).toBe(false);
+    }
+  }
 });

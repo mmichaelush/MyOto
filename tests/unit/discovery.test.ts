@@ -11,6 +11,56 @@ const signal = () => new AbortController().signal;
 const reply = (records: Row[]) =>
   Response.json({ success: true, result: { records } });
 
+test('stages secondary sources behind discovery and preserves the completed report', async () => {
+  const ids: string[] = [];
+  let resolveCme!: (response: Response) => void;
+  let resolveAnchors!: (response: Response) => void;
+  const cme = new Promise<Response>((resolve) => {
+    resolveCme = resolve;
+  });
+  const anchors = new Promise<Response>((resolve) => {
+    resolveAnchors = resolve;
+  });
+  const fetcher = vi.fn<typeof fetch>(async (input) => {
+    const source = new URL(String(input)).searchParams.get('resource_id')!;
+    ids.push(source);
+    if (source === resources.cme.id) return cme;
+    if (source === resources.anchors.id) return anchors;
+    return reply(
+      source === resources.private_cars_1.id
+        ? [{ mispar_rechev: 12345678, tozeret_nm: 'רכב לדוגמה' }]
+        : [],
+    );
+  });
+  const update =
+    vi.fn<(report: import('../../src/domain/report').Report) => void>();
+  const result = new VehicleEngine(new CkanClient(fetcher)).discover(
+    '12345678',
+    signal(),
+    update,
+  );
+  try {
+    await vi.waitFor(() => expect(ids).toContain(resources.private_cars_1.id));
+    expect(update).not.toHaveBeenCalled();
+    resolveCme(reply([]));
+    await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(update.mock.calls[0][0]).toMatchObject({
+      identity: 'private_cars_1',
+      complete: false,
+    });
+    await vi.waitFor(() => expect(ids).toContain(resources.anchors.id));
+    resolveAnchors(reply([{ mispar_rechev: 12345678 }]));
+    const { reports } = await result;
+    expect(reports[0].sources.anchors?.rows).toHaveLength(1);
+    expect(reports[0].complete).toBe(true);
+    expect(ids).toHaveLength(20);
+  } finally {
+    resolveCme(reply([]));
+    resolveAnchors(reply([]));
+    await result;
+  }
+});
+
 test.each([
   [true, false, 'found', 'empty'],
   [false, true, 'empty', 'found'],

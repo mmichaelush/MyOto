@@ -49,6 +49,7 @@ function dataRow(data: DataRow, highlight = false) {
 
 function dataSection(data: DataSection) {
   const section = element('section', undefined, 'data-section');
+  section.dataset.sectionId = data.id;
   section.append(mark(element('h3', data.title), data.icon));
   if (data.note) section.append(element('p', data.note, 'muted section-note'));
   for (const group of data.groups) {
@@ -61,6 +62,7 @@ function dataSection(data: DataSection) {
 
 function dataTable(data: DataTable) {
   const section = element('section', undefined, 'data-section');
+  section.dataset.sectionId = data.id;
   section.append(mark(element('h3', data.title), data.icon));
   if (data.note) section.append(element('p', data.note, 'muted section-note'));
   const scroll = element('div', undefined, 'table-scroll');
@@ -173,6 +175,13 @@ export function renderReport(report: Report, checked?: SourceReplies) {
     );
     reminder.classList.add('recall-reminder');
     title.append(reminder);
+  }
+  if (report.sources.disabledPermit?.rows.length) {
+    const permit = mark(
+      element('p', 'הלוחית רשומה במאגר תגי חניה לנכים', 'permit-indicator'),
+      'accessibility',
+    );
+    title.append(permit);
   }
   const plate = element('div', undefined, 'plate report-plate');
   plate.dir = 'ltr';

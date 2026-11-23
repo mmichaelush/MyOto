@@ -11,6 +11,7 @@ import {
 import { formatPlate } from '../domain/plate';
 import { issueText } from '../domain/diagnostics';
 import { fieldPriority, type Observation, type Report } from '../domain/report';
+import { fieldIcon } from './field-icons';
 
 export type VehicleKind = 'car' | 'motorcycle' | 'truck' | 'bus' | 'equipment';
 export const statusLabels = {
@@ -69,12 +70,14 @@ export type DataRow = {
   differences?: { source: string; text: string }[];
 };
 export type DataSection = {
+  id: string;
   title: string;
   icon: string;
   groups: DataRow[][];
   note?: string;
 };
 export type DataTable = {
+  id: string;
   title: string;
   icon: string;
   labels: string[];
@@ -125,10 +128,11 @@ const rules: Record<string, Partial<DisplayRule>> = {
   },
   baalut: { label: 'בעלות רשומה', order: 20, icon: 'users' },
   kilometer_test_aharon: {
-    label: 'קילומטראז׳ בטסט האחרון',
+    label: 'קריאת נסועה אחרונה',
     order: 30,
     icon: 'gauge',
     unit: 'ק״מ',
+    help: 'מאגר ההיסטוריה מספק קריאת נסועה ללא תאריך המדידה. תאריך הטסט מוצג בנפרד לפי מרשם הרישוי.',
   },
   total_kilometer: {
     label: 'קילומטראז׳ מדווח בצי',
@@ -150,6 +154,8 @@ const rules: Record<string, Partial<DisplayRule>> = {
     category: 'drivetrain',
     order: 10,
   },
+  ramat_gimur: { category: 'identity', order: 55 },
+  shinui_zmig_ind: { category: 'wheels' },
   hanaa_nm: { label: 'תצורת הנעה', category: 'drivetrain', order: 20 },
   grira_nm: {
     label: 'וו גרירה',
@@ -158,8 +164,18 @@ const rules: Record<string, Partial<DisplayRule>> = {
   },
   mishkal_kolel: { label: 'משקל כולל', order: 10, unit: 'ק״ג' },
   mishkal_azmi: { label: 'משקל עצמי', order: 20, unit: 'ק״ג' },
-  kosher_grira_im_blamim: { order: 30, kinds: ['car', 'truck'] },
-  kosher_grira_bli_blamim: { order: 40, kinds: ['car', 'truck'] },
+  kosher_grira_im_blamim: {
+    category: 'dimensions',
+    label: 'כושר גרירה עם בלמים',
+    unit: 'ק״ג',
+    order: 30,
+  },
+  kosher_grira_bli_blamim: {
+    category: 'dimensions',
+    label: 'כושר גרירה בלי בלמים',
+    unit: 'ק״ג',
+    order: 40,
+  },
   SeatsNum: {
     label: 'מושבים לפי נתוני הצי',
     category: 'bus',
@@ -272,7 +288,7 @@ function fieldRow(
     id: rule.id,
     label: rule.label,
     text: textFor(rule.id, first.value, rule.unit),
-    icon: rule.icon ?? categories[rule.category].icon,
+    icon: rule.icon ?? fieldIcon(rule.id, categories[rule.category].icon),
     warning: overdue
       ? `תוקף הרישיון פג לפני ${overdue === 1 ? 'יום אחד' : new Intl.NumberFormat('he-IL').format(overdue) + ' ימים'}`
       : undefined,
@@ -333,11 +349,14 @@ export const baseSections = (
     const items = rows
       .filter((item) => item.category === category)
       .map((item) => item.row);
-    return items.length ? [{ ...categories[category], groups: [items] }] : [];
+    return items.length
+      ? [{ id: category, ...categories[category], groups: [items] }]
+      : [];
   });
 };
 
 function supplement(
+  id: string,
   title: string,
   icon: string,
   rows: Row[],
@@ -345,6 +364,7 @@ function supplement(
   allowMapped = false,
 ): DataSection {
   return {
+    id,
     title,
     icon,
     groups: rows
@@ -353,7 +373,14 @@ function supplement(
           const label =
             map[key] ?? (allowMapped ? fieldLabels[key]?.label : undefined);
           return label && value !== null && value !== ''
-            ? [{ id: key, label, text: displayValue(key, value), icon }]
+            ? [
+                {
+                  id: key,
+                  label,
+                  text: displayValue(key, value),
+                  icon: fieldIcon(key, icon),
+                },
+              ]
             : [];
         }),
       )
@@ -431,13 +458,6 @@ export function vehicleViewModel(report: Report, today = new Date()) {
     const row = rule && fieldRow(rule, report, today);
     if (row) highlights.push(row);
   }
-  if (report.sources.disabledPermit?.rows.length)
-    highlights.push({
-      id: 'disabledPermit',
-      label: 'תג חניה לנכה',
-      icon: 'clipboard-check',
-      text: 'נמצא רישום',
-    });
   const alerts: string[] = [];
   if (report.separated.length)
     alerts.push(
@@ -452,7 +472,7 @@ export function vehicleViewModel(report: Report, today = new Date()) {
       'הלוחית מופיעה ברשימת כלי הרכב שעשויים לקבל הנחה באגרת הרישוי לאחר התקנת מערכת בטיחות. את הזכאות בפועל בודק משרד התחבורה.',
     );
   if (report.sources.anchors?.rows.length)
-    alerts.push('הרכב מופיע במאגר חובת התקנת נקודות עיגון.');
+    alerts.push('הלוחית מופיעה במאגר חובת התקנת נקודות עיגון.');
   const events = [
     [report.fields.rishum_rishon_dt?.chosen, 'רישום ראשון'],
     [report.fields.mivchan_acharon_dt?.chosen, 'מבחן רישוי אחרון'],
@@ -483,6 +503,7 @@ export function vehicleViewModel(report: Report, today = new Date()) {
     );
   if (report.ownership.length)
     tables.push({
+      id: 'ownership-history',
       title: 'היסטוריית בעלויות',
       icon: 'users',
       labels: ['מועד', 'סוג בעלות'],
@@ -494,6 +515,7 @@ export function vehicleViewModel(report: Report, today = new Date()) {
     });
   if (timeline.length)
     tables.push({
+      id: 'registration-timeline',
       title: 'מועדים ברישוי',
       icon: 'history',
       labels: ['מועד', 'אירוע'],
@@ -503,18 +525,19 @@ export function vehicleViewModel(report: Report, today = new Date()) {
     .flatMap(([id, title, icon, map, allowMapped]) => {
       const rows = report.sources[id]?.rows;
       return rows?.length
-        ? [supplement(title, icon, rows, map, allowMapped)]
+        ? [supplement(id, title, icon, rows, map, allowMapped)]
         : [];
     })
     .filter((section) => section.groups.length);
   const history = report.sources.history_1?.rows;
   if (history?.length && report.unverified.includes('history_1')) {
     const section = supplement(
-      'טסט ושינויי מבנה לפי לוחית',
+      'history-by-plate',
+      'נסועה ושינויי מבנה לפי לוחית',
       'gauge',
       history,
       {
-        kilometer_test_aharon: 'קילומטראז׳ בטסט האחרון',
+        kilometer_test_aharon: 'קריאת נסועה אחרונה',
         rishum_rishon_dt: 'רישום ראשון',
       },
       true,
@@ -522,7 +545,7 @@ export function vehicleViewModel(report: Report, today = new Date()) {
     if (section.groups.length)
       additional.unshift({
         ...section,
-        note: 'המקור משויך ללוחית. ההתאמה לרכב הנוכחי לא אומתה.',
+        note: 'המקור משויך ללוחית. ההתאמה לרכב הנוכחי לא אומתה. קריאת הנסועה מופיעה ללא תאריך המדידה.',
       });
   }
   const primary = report.identity ? report.sources[report.identity] : undefined;

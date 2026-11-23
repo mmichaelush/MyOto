@@ -21,7 +21,7 @@ const distributions = stat
       {stat.frameSize
         ? `מדגם שיטתי של ${stat.n} כלי רכב תואמים מתוך ${count.format(stat.frameSize)} שורות במרשם הפעיל. הדגימה נפרסת על פני שמונה מקטעי רישוי ואינה אקראית.`
         : `מדגם נוחות של ${stat.n} כלי רכב תואמים מתחילת המאגר.`}
-      נשלף ב־{fetchedAt.slice(0, 10)}.
+      נשלף ב־{(stat.fetchedAt ?? fetchedAt).slice(0, 10)}.
     </p>
     <div class="grid-data">
       {distributions.map(([label, values]) => (

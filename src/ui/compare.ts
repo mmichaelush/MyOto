@@ -20,7 +20,7 @@ let active: AbortController | undefined;
 const highlights = [
   ['shnat_yitzur', 'שנת ייצור'],
   ['ramat_gimur', 'רמת גימור'],
-  ['kilometer_test_aharon', 'קילומטראז׳ בטסט האחרון'],
+  ['kilometer_test_aharon', 'קריאת נסועה אחרונה'],
   ['baalut', 'בעלות רשומה'],
   ['tokef_dt', 'תוקף רישיון'],
 ];

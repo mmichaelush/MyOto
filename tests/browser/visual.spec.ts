@@ -47,6 +47,9 @@ async function fixtures(
       ) {
         records.push({
           mispar_rechev: Number(plate),
+          sug_degem: 'P',
+          tozeret_cd: 839,
+          degem_cd: 218,
           shnat_yitzur: 2021,
           tozeret_nm: 'טויוטה',
           kinuy_mishari: 'COROLLA',
@@ -142,6 +145,7 @@ for (const width of [390, 1366]) {
     await fixtures(page);
     await page.setViewportSize({ width, height: 850 });
     await page.goto('/MyOto/');
+    await expect(page).toHaveTitle('בדיקת רכב לפי מספר רישוי | MyOto');
     await expect(page.locator('#vehicle-form input')).toHaveCount(1);
     await expect(page.locator('#vehicle-form select')).toHaveCount(0);
     await expect(page).toHaveScreenshot(`home-${width}.png`);
@@ -150,6 +154,12 @@ for (const width of [390, 1366]) {
     await expect(
       page.getByRole('heading', { name: 'היסטוריית בעלויות' }),
     ).toBeVisible({ timeout: 15000 });
+    const yearLink = page.getByRole('link', { name: 'לדף דגם ושנתון' });
+    await expect(yearLink).toHaveAttribute('href', /toyota\/corolla\/2021\/$/);
+    expect((await yearLink.boundingBox())?.height).toBe(
+      (await page.getByRole('button', { name: 'שיתוף קישור' }).boundingBox())
+        ?.height,
+    );
     await expect(
       page.locator(
         '.data-section a[href*="gov.il"], .data-metric a[href*="gov.il"]',
@@ -266,11 +276,21 @@ test('report controls keep their location and section order survives reload', as
   page,
 }) => {
   await fixtures(page);
+  let releaseModel!: () => void;
+  const pendingModel = new Promise<void>((resolve) => (releaseModel = resolve));
+  await page.route('**/models/lookup/8.json', async (route) => {
+    await pendingModel;
+    await route.continue();
+  });
   await page.setViewportSize({ width: 390, height: 850 });
   await page.goto(`/MyOto/?search=${registration}`);
   const more = page.locator('.report-more > summary');
   await expect(more).toHaveText('עוד פעולות');
   const closed = await more.boundingBox();
+  releaseModel();
+  await expect(
+    page.getByRole('link', { name: 'לדף דגם ושנתון' }),
+  ).toBeVisible();
   await more.click();
   await expect(more).toHaveText('הסתר פעולות');
   const open = await more.boundingBox();
@@ -280,7 +300,8 @@ test('report controls keep their location and section order survives reload', as
   await page.getByRole('button', { name: 'סידור הדוח' }).click();
   const section = page.locator('#vehicle-details > section').first();
   const title = (await section.locator('h3').textContent())!;
-  await section.getByRole('button', { name: `הזזת ${title} למטה` }).click();
+  await section.getByRole('button', { name: `הזזת ${title} למטה` }).focus();
+  await page.keyboard.press('Enter');
   await expect(
     page.locator('#vehicle-details > section').nth(1).locator('h3'),
   ).toHaveText(title);
@@ -295,33 +316,118 @@ test('report controls keep their location and section order survives reload', as
     .locator('.drag-handle')
     .dragTo(section.locator('h3'));
   await expect(section.locator('h3')).toHaveText(title);
+  await page.getByRole('button', { name: 'שחזור סדר ברירת המחדל' }).click();
+  await expect(section).toHaveAttribute('data-section-id', 'identity');
+  expect(
+    await page.evaluate(() => localStorage.getItem('myoto-report-order-v2')),
+  ).toBeNull();
 });
 
-test('a registered vehicle shows elapsed license validity and a dated mileage drop', async ({
+test('legacy local readings are removed and do not trigger mileage warnings', async ({
   page,
 }) => {
   await fixtures(page, [], '2026-11-01');
-  await page.goto('/MyOto/');
-  await page.evaluate(async () => {
-    const digest = await crypto.subtle.digest(
-      'SHA-256',
-      new TextEncoder().encode('JTNFAKE1123456789'),
-    );
-    const key = Array.from(new Uint8Array(digest), (byte) =>
-      byte.toString(16).padStart(2, '0'),
-    ).join('');
+  await page.addInitScript(() => {
     localStorage.setItem(
       'myoto-test-mileage',
-      JSON.stringify([{ key, date: '2025-04-07', km: 90210 }]),
+      JSON.stringify([{ key: 'old-vehicle', date: '2025-04-07', km: 90210 }]),
     );
   });
+  await page.goto('/MyOto/');
   await page.getByLabel('מספר רישוי או צמ״ה').fill(registration);
   await page.getByLabel('מספר רישוי או צמ״ה').press('Enter');
   await expect(page.getByText('תוקף הרישיון פג לפני 22 ימים')).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'נמדדה ירידה בקילומטראז׳' }),
+    page.getByText('קריאת נסועה אחרונה', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText(/90,210.*86,541/)).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'נמדדה ירידה בקילומטראז׳' }),
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(() => localStorage.getItem('myoto-test-mileage')),
+  ).toBeNull();
+});
+
+test('lazy catalog actions and mileage comparisons stay with their own report', async ({
+  page,
+}) => {
+  await fixtures(page);
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/models/lookup/8.json', async (route) => {
+    await pending;
+    await route.continue().catch(() => {});
+  });
+  await page.goto(`/MyOto/?search=${registration}`);
+  const comparison = page.getByRole('heading', {
+    name: 'נסועה בהשוואה למדגם השנתון',
+  });
+  const model = page.getByRole('link', { name: 'לדף דגם ושנתון' });
+  try {
+    await expect(comparison).toHaveCount(1);
+    const plate = page.getByLabel('מספר רישוי או צמ״ה');
+    await plate.fill(bike);
+    await plate.press('Enter');
+    await expect(page.locator('.vehicle-heading')).toContainText('CB500X');
+    release();
+    await expect(comparison).toHaveCount(0);
+    await expect(model).toHaveCount(0);
+    await plate.fill(registration);
+    await plate.press('Enter');
+    await expect(model).toHaveCount(1);
+    await expect(comparison).toHaveCount(1);
+  } finally {
+    release();
+  }
+});
+
+test('moves a card by touch and keeps sections that were absent from saved preferences', async ({
+  page,
+  context,
+}) => {
+  await fixtures(page);
+  await page.setViewportSize({ width: 768, height: 1000 });
+  await page.addInitScript(() => {
+    if (!localStorage.getItem('myoto-report-order-v2'))
+      localStorage.setItem(
+        'myoto-report-order-v2',
+        JSON.stringify(['engine', 'future-section', 'identity']),
+      );
+  });
+  await page.goto(`/MyOto/?search=${registration}`);
+  const cards = page.locator('#vehicle-details > section');
+  await expect(cards.first()).toHaveAttribute('data-section-id', 'engine');
+  await expect(
+    page.locator('[data-section-id="ownership-history"]'),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'סידור הדוח' }).click();
+  const grip = cards.first().locator('.drag-handle');
+  await grip.scrollIntoViewIfNeeded();
+  const origin = (await grip.boundingBox())!;
+  const target = (await cards.nth(1).locator('.drag-handle').boundingBox())!;
+  const client = await context.newCDPSession(page);
+  const point = (box: typeof origin) => ({
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  });
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [point(origin)],
+  });
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [point(target)],
+  });
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [],
+  });
+  await expect(cards.nth(1)).toHaveAttribute('data-section-id', 'engine');
+  expect(
+    await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('myoto-report-order-v2') ?? '[]'),
+    ),
+  ).toContain('future-section');
 });
 
 test('catalog and comparison render on a narrow tablet and print stays readable', async ({

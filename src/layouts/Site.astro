@@ -19,6 +19,12 @@ const base = import.meta.env.BASE_URL;
     <meta name="referrer" content="no-referrer" />
     {privatePage && <meta name="robots" content="noindex,follow" />}
     <link rel="icon" href={base + 'myoto.svg'} type="image/svg+xml" />
+    <link
+      rel="icon"
+      href={base + 'myoto-32.png'}
+      type="image/png"
+      sizes="32x32"
+    />
     <title>{title} | MyOto</title>
   </head>
   <body>
@@ -69,9 +75,29 @@ const base = import.meta.env.BASE_URL;
       <slot />
     </main>
     {!embedded && (
-      <footer class="wrap footer">
-        <a href="https://github.com/mmichaelush/MyOto">MyOto</a>
-        <a href={base + 'privacy/'}>פרטיות ומקורות</a>
+      <footer class="site-footer">
+        <div class="wrap footer">
+          <div class="footer-summary">
+            <a class="brand" href={base}>
+              <img
+                class="brand-mark"
+                src={base + 'myoto.svg'}
+                width="34"
+                height="34"
+                alt=""
+              />
+              <bdi>MyOto</bdi>
+            </a>
+            <p>חיפוש רכב, מפרטים והשוואות לפי מאגרי משרד התחבורה.</p>
+          </div>
+          <nav class="footer-links" aria-label="קישורים בתחתית האתר">
+            <a href={base}>בדיקת רכב</a>
+            <a href={base + 'models/'}>יצרנים ודגמים</a>
+            <a href={base + 'compare/'}>השוואת רכבים</a>
+            <a href={base + 'privacy/'}>פרטיות ומקורות</a>
+            <a href="https://github.com/mmichaelush/MyOto">קוד המקור</a>
+          </nav>
+        </div>
       </footer>
     )}
   </body>

@@ -1,6 +1,7 @@
 import data from './cohorts.json' with { type: 'json' };
 
 type Cohort = {
+  fetchedAt?: string;
   variantKeys: string[];
   n: number;
   frameSize?: number;

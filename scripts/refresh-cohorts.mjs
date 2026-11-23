@@ -5,12 +5,42 @@ import { mileageSummary, sampleWindows } from '../src/domain/statistics.ts';
 const file = (name) => new URL(`../src/data/${name}.json`, import.meta.url);
 const resources = JSON.parse(await readFile(file('resources'), 'utf8'));
 const catalog = JSON.parse(await readFile(file('catalog'), 'utf8'));
-const cohorts = [
+const standardCohorts = [
   ['mitsubishi', 'lancer', 2010],
   ['toyota', 'corolla', 2021],
   ['hyundai', 'tucson', 2022],
 ];
 const sampleLimit = 200;
+const before2017 = process.argv.includes('--before-2017');
+
+function olderCohorts() {
+  const groups = [];
+  for (const make of catalog.makes) {
+    for (const model of make.models) {
+      const active = new Map();
+      for (const record of model.records) {
+        if (record.year >= 2017) continue;
+        active.set(record.year, (active.get(record.year) ?? 0) + record.active);
+      }
+      for (const [year, count] of active)
+        if (count >= sampleLimit)
+          groups.push({
+            point: [make.id, model.id, year],
+            count,
+            key: make.id + '/' + model.id + '/' + year,
+          });
+    }
+  }
+  return groups
+    .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key))
+    .slice(0, 6)
+    .map((group) => group.point);
+}
+
+const cohorts = before2017 ? olderCohorts() : standardCohorts;
+const prior = before2017
+  ? JSON.parse(await readFile(file('cohorts'), 'utf8'))
+  : undefined;
 
 async function rows(
   source,
@@ -31,7 +61,19 @@ async function rows(
     include_total: String(includeTotal),
     ...(includeTotal && { total_estimation_threshold: '1000000' }),
   });
-  const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  let response;
+  for (const attempt of [1, 2]) {
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(18000) });
+    } catch (error) {
+      if (attempt === 2)
+        throw new Error(`${source} request failed (${error.name})`, {
+          cause: error,
+        });
+    }
+    if (response && response.status !== 429 && response.status < 500) break;
+    if (attempt === 1) await setTimeout(3000);
+  }
   if (!response.ok) throw new Error(`${source} returned ${response.status}`);
   const body = await response.json();
   if (
@@ -63,12 +105,15 @@ function distribution(sample, field) {
 }
 
 const result = {
-  fetchedAt: new Date().toISOString(),
+  fetchedAt: prior?.fetchedAt ?? new Date().toISOString(),
   sampleLimit,
   method: 'stratified-rank-windows',
-  cohorts: {},
+  cohorts: { ...prior?.cohorts },
 };
+const observedAt = new Date().toISOString();
+let refreshed = 0;
 for (const [make, slug, year] of cohorts) {
+  console.log(`Sampling ${make}/${slug}/${year}`);
   const model = catalog.makes
     .find((entry) => entry.id === make)
     ?.models.find((entry) => entry.id === slug);
@@ -160,6 +205,7 @@ for (const [make, slug, year] of cohorts) {
     }
   }
   result.cohorts[`${make}/${slug}/${year}`] = {
+    fetchedAt: observedAt,
     variantKeys: [...keys],
     n: sample.length,
     frameSize: frame.total,
@@ -169,7 +215,10 @@ for (const [make, slug, year] of cohorts) {
     trims: distribution(sample, 'ramat_gimur'),
     mileage: mileageSummary(mileage),
   };
+  refreshed++;
 }
+if (refreshed === 0)
+  throw new Error('No cohorts could be published from this sample');
 const temporary = new URL('./cohorts.json.tmp', file('cohorts'));
 await writeFile(temporary, JSON.stringify(result) + '\n');
 await rename(temporary, file('cohorts'));

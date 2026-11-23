@@ -26,7 +26,8 @@ main:has(.lookup-hero) {
   padding: clamp(0.9rem, 3vw, 1.65rem);
   box-shadow: 0 3px 15px #284b6d0b;
   text-align: start;
-  inline-size: 100%;
+  inline-size: min(100%, 36rem);
+  margin-inline: auto;
   margin-block-end: 0.85rem;
 }
 .lookup-hero .hero-heading {
@@ -228,27 +229,27 @@ main:has(.lookup-hero) {
   padding-block-start: 0.55rem;
   gap: 0.35rem 0.55rem;
 }
-.report-summary .actions > a,
-.report-more > summary {
-  padding: 0.38rem 0.55rem;
+.report-summary .actions :is(a, button, summary) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.65rem;
   min-height: 44px;
+  font-size: 0.88rem;
   font-weight: 670;
   border-radius: 0.45rem;
-}
-.report-summary .actions > a {
+  border: 1px solid var(--edge);
+  color: var(--blue);
+  background: var(--light);
   text-decoration: none;
 }
 .report-summary .actions > a:hover,
 .report-more > summary:hover {
   background: var(--light);
 }
-.report-summary .actions button {
-  font-size: 0.88rem;
-  min-height: 44px;
-  padding: 0.35rem 0.6rem;
-}
 .report-more {
-  inline-size: auto;
+  margin-inline-start: auto;
 }
 .report-more[open] {
   z-index: 1;
@@ -257,7 +258,20 @@ main:has(.lookup-hero) {
   transform: rotate(180deg);
 }
 .report-more > summary {
-  inline-size: 8.75rem;
+  inline-size: 8.35rem;
+}
+@media (max-width: 52rem) {
+  .report-summary > .actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .report-more {
+    grid-area: 1 / 2;
+    margin-inline-start: 0;
+  }
+  .report-more > summary {
+    inline-size: 100%;
+  }
 }
 .report-more summary {
   cursor: pointer;
@@ -284,15 +298,6 @@ main:has(.lookup-hero) {
   font-size: 0.81rem;
   margin-block-start: 0.2rem;
 }
-.mileage-warning {
-  padding: 0.75rem 1rem;
-  margin-block: 0.6rem;
-  border: 1px solid #d9aa51;
-  border-radius: 0.5rem;
-}
-.mileage-warning :is(h3, p) {
-  margin: 0 0 0.25rem;
-}
 .section-order {
   display: flex;
   gap: 0.3rem;
@@ -300,7 +305,12 @@ main:has(.lookup-hero) {
   padding-block-end: 0.5rem;
 }
 .drag-handle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   cursor: grab;
+  touch-action: none;
+  user-select: none;
   color: var(--blue);
   font-weight: 650;
   padding-inline: 0.4rem;
@@ -316,9 +326,28 @@ main:has(.lookup-hero) {
 .report-order-toggle[aria-pressed='true'] {
   background: var(--light);
 }
-.arranging > section {
-  outline: 1px dashed #8caaca;
-  outline-offset: 0.25rem;
+.arranging > .section-dragging {
+  opacity: 0.55;
+}
+.report-order-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.6rem 0.7rem;
+  background: var(--light);
+  border-radius: 0.45rem;
+}
+.permit-indicator {
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  gap: 0.35rem;
+  margin: 0.45rem 0 0;
+  color: #174671;
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 .data-row dt .ui-icon {
   color: #4b6e9e;
@@ -430,8 +459,21 @@ main:has(.lookup-hero) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
-  gap: 1.05rem clamp(1rem, 3vw, 2rem);
+  gap: clamp(0.65rem, 1.4vw, 1rem);
   margin-block: 1.15rem 1.35rem;
+}
+.report-sections > .data-section {
+  padding: 0.55rem clamp(0.55rem, 1.2vw, 0.85rem) 0.7rem;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+.report-sections.arranging > .data-section {
+  border-color: #aac0dd;
+}
+.report-sections > .section-drop-target {
+  outline: 2px solid #245e99;
+  background: #edf5ff;
 }
 .data-section {
   min-inline-size: 0;
@@ -611,6 +653,7 @@ main:has(.lookup-hero) {
   .report-nav,
   .recall-reminder,
   .section-order,
+  .report-order-bar,
   .embed-link,
   .lookup-status,
   .recall-scope,
@@ -625,6 +668,8 @@ main:has(.lookup-hero) {
   }
   .report-sections .data-section {
     margin-block: 0.5rem;
+    padding: 0;
+    border: 0;
   }
   .data-section,
   .vehicle-report .report-summary {

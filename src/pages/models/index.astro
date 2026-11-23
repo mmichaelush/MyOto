@@ -2,9 +2,17 @@
 import Site from '../../layouts/Site.astro';
 import CatalogSource from '../../components/CatalogSource.astro';
 import { catalog, count } from '../../data/catalog';
+import { cohorts } from '../../data/cohorts';
 import '../../styles/catalog.css';
 const base = import.meta.env.BASE_URL + 'models/';
 const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
+const ownershipTypes = [
+  ...new Set(
+    Object.values(cohorts).flatMap(
+      (cohort) => cohort?.ownership.map(([label]) => label) ?? [],
+    ),
+  ),
+].sort((a, b) => a.localeCompare(b, 'he'));
 ---
 
 <Site title="יצרנים ודגמים בישראל">
@@ -46,6 +54,30 @@ const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
         />
       </label>
     </div>
+    <details class="catalog-facets">
+      <summary>סינון לפי גימור ובעלות</summary>
+      <div class="catalog-filters">
+        <label class="control">
+          רמת גימור
+          <input
+            id="catalog-trim"
+            class="text-input"
+            placeholder="שם גימור מדויק"
+            autocomplete="off"
+          />
+        </label>
+        <label class="control">
+          בעלות במדגם
+          <select id="catalog-ownership">
+            <option value="">כל סוגי הבעלות</option>
+            {ownershipTypes.map((label) => (
+              <option value={label}>{label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <small class="muted">סוג הבעלות מסונן לפי המדגמים הזמינים לשנתון.</small>
+    </details>
     <datalist id="model-names"></datalist>
     <p id="model-filter-status" role="status" class="muted"></p>
   </section>
@@ -89,6 +121,9 @@ const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
   const status = document.querySelector<HTMLElement>('#model-filter-status')!;
   const make = document.querySelector<HTMLSelectElement>('#catalog-make')!;
   const yearInput = document.querySelector<HTMLInputElement>('#catalog-year')!;
+  const trim = document.querySelector<HTMLInputElement>('#catalog-trim')!;
+  const ownership =
+    document.querySelector<HTMLSelectElement>('#catalog-ownership')!;
   const makes = document.querySelector<HTMLElement>('#all-makes')!;
   const section = document.querySelector<HTMLElement>('#model-results')!;
   const grid = section.querySelector('.model-grid')!;
@@ -107,7 +142,13 @@ const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
       ? yearInput.value.trim()
       : inlineYear;
     const query = terms.filter((term) => term !== inlineYear).join(' ');
-    if (!query && !requestedYear && !make.value) {
+    if (
+      !query &&
+      !requestedYear &&
+      !make.value &&
+      !trim.value.trim() &&
+      !ownership.value
+    ) {
       makes.hidden = false;
       section.hidden = true;
       status.textContent = '';
@@ -132,6 +173,7 @@ const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
         query,
         make.value,
         requestedYear ? Number(requestedYear) : undefined,
+        { trim: trim.value, ownership: ownership.value },
       );
       const shown = matches.slice(0, 36);
       grid.replaceChildren(
@@ -189,10 +231,18 @@ const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
   yearInput.addEventListener('input', () => {
     void search();
   });
+  trim.addEventListener('input', () => {
+    void search();
+  });
+  ownership.addEventListener('change', () => {
+    void search();
+  });
   document.querySelector('#catalog-reset')?.addEventListener('click', () => {
     input.value = '';
     make.value = '';
     yearInput.value = '';
+    trim.value = '';
+    ownership.value = '';
     input.focus();
     void search();
   });

@@ -97,7 +97,7 @@ test('shows history by plate separately when a non-private registration cannot v
     view.highlights.some((row) => row.id === 'kilometer_test_aharon'),
   ).toBe(false);
   const history = view.additional.find(
-    (section) => section.title === 'טסט ושינויי מבנה לפי לוחית',
+    (section) => section.id === 'history-by-plate',
   );
   expect(history?.note).toContain('ההתאמה לרכב הנוכחי לא אומתה');
   expect(

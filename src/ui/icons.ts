@@ -28,6 +28,35 @@ import database from 'lucide-static/icons/database.svg?raw';
 import search from 'lucide-static/icons/search.svg?raw';
 import chevronDown from 'lucide-static/icons/chevron-down.svg?raw';
 
+import bookOpen from 'lucide-static/icons/book-open.svg?raw';
+import accessibility from 'lucide-static/icons/accessibility.svg?raw';
+import weight from 'lucide-static/icons/weight.svg?raw';
+import fuel from 'lucide-static/icons/fuel.svg?raw';
+import palette from 'lucide-static/icons/palette.svg?raw';
+import factory from 'lucide-static/icons/factory.svg?raw';
+import calendarDays from 'lucide-static/icons/calendar-days.svg?raw';
+import fileBadge from 'lucide-static/icons/file-badge.svg?raw';
+import fingerprint from 'lucide-static/icons/fingerprint.svg?raw';
+import caravan from 'lucide-static/icons/caravan.svg?raw';
+import scanLine from 'lucide-static/icons/scan-line.svg?raw';
+import airVent from 'lucide-static/icons/air-vent.svg?raw';
+import camera from 'lucide-static/icons/camera.svg?raw';
+import armchair from 'lucide-static/icons/armchair.svg?raw';
+import doorOpen from 'lucide-static/icons/door-open.svg?raw';
+import waypoints from 'lucide-static/icons/waypoints.svg?raw';
+import wind from 'lucide-static/icons/wind.svg?raw';
+import shieldAlert from 'lucide-static/icons/shield-alert.svg?raw';
+import trafficCone from 'lucide-static/icons/traffic-cone.svg?raw';
+import lightbulb from 'lucide-static/icons/lightbulb.svg?raw';
+import personStanding from 'lucide-static/icons/person-standing.svg?raw';
+import tag from 'lucide-static/icons/tag.svg?raw';
+import wallet from 'lucide-static/icons/wallet.svg?raw';
+import batteryCharging from 'lucide-static/icons/battery-charging.svg?raw';
+import globe from 'lucide-static/icons/globe.svg?raw';
+import zap from 'lucide-static/icons/zap.svg?raw';
+import cargoPackage from 'lucide-static/icons/package.svg?raw';
+import grip from 'lucide-static/icons/grip.svg?raw';
+
 const symbols: Record<string, string> = {
   'car-front': carFront,
   'clipboard-check': clipboardCheck,
@@ -58,6 +87,34 @@ const symbols: Record<string, string> = {
   database: database,
   search: search,
   'chevron-down': chevronDown,
+  'book-open': bookOpen,
+  accessibility: accessibility,
+  weight: weight,
+  fuel: fuel,
+  palette: palette,
+  factory: factory,
+  'calendar-days': calendarDays,
+  'file-badge': fileBadge,
+  fingerprint: fingerprint,
+  caravan: caravan,
+  'scan-line': scanLine,
+  'air-vent': airVent,
+  camera: camera,
+  armchair: armchair,
+  'door-open': doorOpen,
+  waypoints: waypoints,
+  wind: wind,
+  'shield-alert': shieldAlert,
+  'traffic-cone': trafficCone,
+  lightbulb: lightbulb,
+  'person-standing': personStanding,
+  tag: tag,
+  wallet: wallet,
+  'battery-charging': batteryCharging,
+  globe: globe,
+  zap: zap,
+  package: cargoPackage,
+  grip,
 };
 
 export function icon(name: string) {

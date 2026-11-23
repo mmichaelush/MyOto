@@ -27,6 +27,7 @@ const cases = [
   ['ownership', '60234567', 'private_cars_1'],
   ['historic', '00123456', 'offRoad_2'],
   ['collision', '90234567', 'private_cars_1'],
+  ['arrangement', '11234567', 'private_cars_1'],
 ];
 const names = {
   private: 'טויוטה',
@@ -250,6 +251,7 @@ try {
       cases
         .filter(
           ([name, plate]) =>
+            (name !== 'arrangement' || wanted.has(name)) &&
             (fieldAudit
               ? Boolean(plate)
               : edition !== 'legacy' || plate || name === 'home') &&
@@ -326,6 +328,12 @@ try {
               await page
                 .getByRole('button', { name: /רכב ברישוי רגיל/ })
                 .click();
+            if (name === 'arrangement') {
+              await page.getByRole('button', { name: 'סידור הדוח' }).click();
+              await page.locator('.report-order-bar').evaluate((node) => {
+                node.scrollIntoView({ block: 'start' });
+              });
+            }
             const metrics = await page.evaluate(
               (edition) => ({
                 title: document.querySelector('h1')?.textContent?.trim(),
@@ -363,7 +371,7 @@ try {
                 path: fileURLToPath(
                   new URL(edition + '/' + name + '-' + width + '.png', root),
                 ),
-                fullPage: true,
+                fullPage: name !== 'arrangement',
                 animations: 'disabled',
                 timeout: 10000,
               });

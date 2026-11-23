@@ -7,7 +7,6 @@ import { renderReport, sourceDetails, vehicleName } from './report';
 import { renderRecall } from './recall-panel';
 import { mark } from './icons';
 import { failedSources, logFailure, logLookup } from './diagnostics';
-import { mileageAlert, mileageStorageKey } from './mileage-history';
 
 const form = document.querySelector<HTMLFormElement>('#vehicle-form')!;
 const input = document.querySelector<HTMLInputElement>('#plate')!;
@@ -45,7 +44,8 @@ function write(key: string, values: Saved[]) {
   try {
     localStorage.setItem(key, JSON.stringify(values.slice(0, 12)));
     return true;
-  } catch {
+  } catch (error) {
+    logFailure('save-preference', error);
     return false;
   }
 }
@@ -88,15 +88,10 @@ function renderSaved() {
     title.append(
       element('h2', heading),
       button('ניקוי ' + heading, () => {
-        if (write(key, [])) {
-          if (key === 'myoto-recent') {
-            try {
-              localStorage.removeItem(mileageStorageKey);
-            } catch (error) {
-              logFailure('clear-mileage', error);
-            }
-          }
-          renderSaved();
+        if (write(key, [])) renderSaved();
+        else {
+          message.classList.remove('visually-hidden');
+          message.textContent = 'הדפדפן חסם את עדכון הרשימה המקומית.';
         }
       }),
     );
@@ -119,14 +114,15 @@ function renderSaved() {
   saved.hidden = !saved.children.length;
 }
 
-function download(filename: string, content: unknown) {
-  const url = URL.createObjectURL(
-    new Blob([JSON.stringify(content, null, 2)], { type: 'application/json' }),
-  );
+function download(filename: string, content: Blob) {
+  const url = URL.createObjectURL(content);
   const anchor = link('', url);
   anchor.download = filename;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  try {
+    anchor.click();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 }
 
 function renderActions(report: Report) {
@@ -147,6 +143,7 @@ function renderActions(report: Report) {
     }),
   ].join(' · ');
   const copy = async (value: string, success: string) => {
+    if (signal?.aborted) return;
     try {
       await navigator.clipboard.writeText(value);
       actionFeedback(success);
@@ -157,6 +154,32 @@ function renderActions(report: Report) {
   };
   const action = (label: string, icon: string, click: () => void) =>
     mark(button(label, click), icon);
+  const print = (compact = false) => {
+    document.body.classList.toggle('compact-print', compact);
+    try {
+      window.print();
+    } catch (error) {
+      logFailure('print', error);
+      actionFeedback(
+        'לא ניתן לפתוח את חלון ההדפסה. אפשר לפתוח את הדוח בחלון נפרד ולנסות שוב.',
+      );
+    } finally {
+      document.body.classList.remove('compact-print');
+    }
+  };
+  const exportJson = (filename: string, contents: unknown) => {
+    try {
+      download(
+        filename,
+        new Blob([JSON.stringify(contents, null, 2)], {
+          type: 'application/json',
+        }),
+      );
+    } catch (error) {
+      logFailure('export-json', error);
+      actionFeedback('לא ניתן להוריד את הקובץ. אפשר לנסות שוב.');
+    }
+  };
   const share = action('שיתוף קישור', 'share-2', () => {
     if (navigator.share && window.self === window.top) {
       void navigator
@@ -176,7 +199,10 @@ function renderActions(report: Report) {
     if (write('myoto-favorites', next)) {
       save.setAttribute('aria-pressed', String(!present));
       renderSaved();
-    }
+    } else
+      actionFeedback(
+        'לא ניתן לשנות את המועדפים כי הדפדפן חסם את האחסון המקומי.',
+      );
   });
   save.setAttribute(
     'aria-pressed',
@@ -191,55 +217,52 @@ function renderActions(report: Report) {
     menuLabel.textContent = more.open ? 'הסתר פעולות' : 'עוד פעולות';
   });
   const menu = element('div', undefined, 'report-action-list');
+  const imageExport = action('תמונה PNG', 'image', () => {
+    const article = output.querySelector<HTMLElement>('.vehicle-report');
+    if (!article || signal?.aborted || imageExport.disabled) return;
+    const scale = Math.min(
+      1,
+      8192 / article.scrollHeight,
+      Math.sqrt(8_000_000 / (article.scrollWidth * article.scrollHeight)),
+    );
+    if (scale < 0.45) {
+      actionFeedback('הדוח ארוך מדי לתמונה קריאה. אפשר לשמור אותו כ־PDF.');
+      return;
+    }
+    imageExport.disabled = true;
+    void (async () => {
+      try {
+        const { default: render } = await import('html2canvas');
+        if (signal?.aborted || !article.isConnected) return;
+        const canvas = await render(article, {
+          scale,
+          ignoreElements: (node) =>
+            node.id === 'actions' || node.classList.contains('advanced'),
+        });
+        if (signal?.aborted) return;
+        const blob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob(resolve),
+        );
+        if (signal?.aborted) return;
+        if (!blob) throw new Error('PNG encoding returned no image');
+        download(`car-${report.plate}.png`, blob);
+      } catch (error) {
+        if (!signal?.aborted) {
+          logFailure('export-image', error);
+          actionFeedback('יצירת התמונה נכשלה. אפשר לשמור את הדוח כ־PDF.');
+        }
+      } finally {
+        imageExport.disabled = false;
+      }
+    })();
+  });
   menu.append(
     save,
     action('העתקת תקציר', 'copy', () => {
       void copy(summary, 'תקציר הדוח הועתק.');
     }),
-    action('דוח קומפקטי', 'printer', () => {
-      document.body.classList.add('compact-print');
-      try {
-        window.print();
-      } finally {
-        document.body.classList.remove('compact-print');
-      }
-    }),
-    action('תמונה PNG', 'image', () => {
-      const article = output.querySelector<HTMLElement>('.vehicle-report');
-      if (!article) return;
-      const scale = Math.min(
-        1,
-        8192 / article.scrollHeight,
-        Math.sqrt(8_000_000 / (article.scrollWidth * article.scrollHeight)),
-      );
-      if (scale < 0.45) {
-        actionFeedback('הדוח ארוך מדי לתמונה קריאה. אפשר לשמור אותו כ־PDF.');
-        return;
-      }
-      void import('html2canvas')
-        .then(({ default: render }) =>
-          render(article, {
-            scale,
-            ignoreElements: (node) =>
-              node.id === 'actions' || node.classList.contains('advanced'),
-          }),
-        )
-        .then((canvas) =>
-          canvas.toBlob((blob) => {
-            if (!blob)
-              return actionFeedback('הדפדפן לא הצליח ליצור את קובץ התמונה.');
-            const objectUrl = URL.createObjectURL(blob);
-            const anchor = link('', objectUrl);
-            anchor.download = `car-${report.plate}.png`;
-            anchor.click();
-            setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-          }),
-        )
-        .catch((error) => {
-          logFailure('export-image', error);
-          actionFeedback('יצירת התמונה נכשלה. אפשר לשמור את הדוח כ־PDF.');
-        });
-    }),
+    action('דוח קומפקטי', 'printer', () => print(true)),
+    imageExport,
     action('JSON', 'file-json', () => {
       const { sources, ...data } = report;
       const sourceStatus = Object.fromEntries(
@@ -248,20 +271,20 @@ function renderActions(report: Report) {
           { fetchedAt, issue, count: rows.length },
         ]),
       );
-      download(`car-${report.plate}.json`, {
+      exportJson(`car-${report.plate}.json`, {
         ...data,
         sourceStatus,
         schema: 2,
       });
     }),
     action('תגובות מקור', 'download', () =>
-      download(`car-${report.plate}-sources.json`, report.sources),
+      exportJson(`car-${report.plate}-sources.json`, report.sources),
     ),
   );
   more.append(menu);
   actions.replaceChildren(
     share,
-    action('הדפסה / PDF', 'printer', () => window.print()),
+    action('הדפסה / PDF', 'printer', () => print()),
     more,
   );
   if (report.domain === 'registration') {
@@ -286,23 +309,23 @@ function showResult(report: Report, checked?: SourceReplies) {
   const signal = controller?.signal;
   const article = output.firstElementChild;
   if (signal && report.fields.kilometer_test_aharon) {
-    void mileageAlert(report, signal).then((alert) => {
-      if (alert && !signal.aborted)
-        article?.querySelector('.report-summary')?.after(alert);
-    });
     void import('./mileage')
       .then(({ mileageComparison }) => {
-        if (signal.aborted) return;
+        if (signal.aborted || !article?.isConnected) return;
         const comparison = mileageComparison(report);
         if (comparison) article?.append(comparison);
       })
-      .catch((error) => logFailure('mileage-comparison', error));
+      .catch((error) => {
+        if (!signal.aborted) logFailure('mileage-comparison', error);
+      });
   }
   if (signal)
     void import('./model-link')
       .then(({ modelLink }) => modelLink(report, signal))
       .then((anchor) => {
-        if (anchor && !signal.aborted) actions.append(anchor);
+        const more = actions.querySelector('.report-more');
+        if (anchor && more && article?.isConnected && !signal.aborted)
+          actions.insertBefore(mark(anchor, 'book-open'), more);
       })
       .catch((error) => {
         if (!signal.aborted) logFailure('catalog-link', error);
@@ -527,4 +550,11 @@ form.addEventListener('submit', (event) => {
 input.addEventListener('input', () => input.removeAttribute('aria-invalid'));
 addEventListener('popstate', fromUrl);
 renderSaved();
+try {
+  // Remove samples from versions that attached a separate registry test date.
+  if (localStorage.getItem('myoto-test-mileage') !== null)
+    localStorage.removeItem('myoto-test-mileage');
+} catch {
+  // Some embedded browsers disallow reading local storage.
+}
 fromUrl();

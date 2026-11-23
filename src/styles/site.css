@@ -92,9 +92,36 @@ a {
 main {
   padding-block: clamp(1rem, 4vw, 3rem);
 }
-.footer {
+.site-footer {
+  background: #e9f0fa;
+  border-block-start: 1px solid #c7d7eb;
   color: var(--muted);
-  border-top: 1px solid var(--line);
+}
+.footer {
+  justify-content: space-between;
+  align-items: start;
+  padding-block: 1.15rem 1.35rem;
+}
+.footer-summary p {
+  margin-block: 0.35rem 0;
+  max-inline-size: 30ch;
+}
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.05rem;
+  align-items: center;
+}
+.footer-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  text-underline-offset: 0.2em;
+}
+@media print {
+  .site-footer {
+    display: none;
+  }
 }
 .panel {
   background: var(--surface);

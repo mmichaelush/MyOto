@@ -1,6 +1,41 @@
 import { expect, test } from '@playwright/test';
 import { resources } from '../../src/data/sources';
 
+test('reports clipboard, storage, print and PNG failures without losing the report', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: async () => {
+          throw new DOMException('Denied', 'NotAllowedError');
+        },
+      },
+    });
+    Storage.prototype.setItem = () => {
+      throw new DOMException('Denied', 'QuotaExceededError');
+    };
+    window.print = () => {
+      throw new DOMException('Denied', 'NotAllowedError');
+    };
+    HTMLCanvasElement.prototype.toBlob = (callback) => callback(null);
+  });
+  await page.goto('/MyOto/?search=0123456');
+  const status = page.locator('#search-status');
+  await page.getByRole('button', { name: 'שיתוף קישור' }).click();
+  await expect(status).toHaveText(/ההעתקה לא זמינה/);
+  await page.getByRole('button', { name: 'הדפסה / PDF' }).click();
+  await expect(status).toHaveText(/לא ניתן לפתוח את חלון ההדפסה/);
+  await page.getByText('עוד פעולות', { exact: true }).click();
+  await page.getByRole('button', { name: 'מועדף', exact: true }).click();
+  await expect(status).toHaveText(/הדפדפן חסם את האחסון המקומי/);
+  const image = page.getByRole('button', { name: 'תמונה PNG' });
+  await image.click();
+  await expect(status).toHaveText(/יצירת התמונה נכשלה/, { timeout: 15000 });
+  await expect(image).toBeEnabled();
+  await expect(page.locator('.vehicle-report')).toHaveCount(1);
+});
+
 test.beforeEach(async ({ page }) => {
   await page.route(
     (url) =>

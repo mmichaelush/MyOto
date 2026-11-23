@@ -145,3 +145,40 @@ test('discovers plate-based recalls independently of missing vehicle identity', 
     registrationRequestBudget,
   );
 });
+
+test('keeps each campaign scoped to its own confirmed repair and importer data', async () => {
+  const fetcher = vi.fn<typeof fetch>(async (url) => {
+    const params = new URL(String(url)).searchParams;
+    if (params.get('resource_id') === resources.recall.id)
+      return reply(recall, { ...recall, RECALL_ID: 502, SUG_TAKALA: 'היגוי' });
+    if (params.get('resource_id') === resources.campaigns.id) {
+      expect(JSON.parse(params.get('filters') ?? '{}')).toEqual({
+        RECALL_ID: [501, 502],
+      });
+      return reply(
+        {
+          RECALL_ID: 501,
+          OFEN_TIKUN: 'החלפת רכיב',
+          WEBSITE: 'https://importer.example/recall',
+        },
+        { RECALL_ID: 502, WEBSITE: 'https://importer.example/steering' },
+        { RECALL_ID: 502, WEBSITE: 'https://other.example/steering' },
+      );
+    }
+    return reply();
+  });
+  const {
+    reports: [report],
+  } = await new VehicleEngine(new CkanClient(fetcher)).discover(
+    plate,
+    signal(),
+  );
+  expect(recallView(report).notices).toMatchObject([
+    {
+      id: '501',
+      repair: 'החלפת רכיב',
+      website: 'https://importer.example/recall',
+    },
+    { id: '502', repair: '', website: '' },
+  ]);
+});
