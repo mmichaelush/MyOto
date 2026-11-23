@@ -25,8 +25,14 @@ const base = import.meta.env.BASE_URL;
     </a>
     <header class="site-header">
       <nav class="wrap" aria-label="ניווט ראשי">
-        <a class="brand" href={base}>
-          MyOto
+        <a class="brand" href={base} dir="ltr">
+          <span class="brand-mark" aria-hidden="true"></span>MyOto
+        </a>
+        <a
+          href={base}
+          aria-current={Astro.url.pathname === base ? 'page' : undefined}
+        >
+          בדיקת רכב
         </a>
         <a href={base + 'models/'}>יצרנים ודגמים</a>
       </nav>

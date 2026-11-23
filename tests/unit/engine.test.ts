@@ -24,15 +24,37 @@ test('preserves archive padding and keeps the equipment key distinct', () => {
 test('retains zero and source provenance and separates conflicting identities', () => {
   const sources = {
     private_cars_1: reply([
-      { shnat_yitzur: 2020, misgeret: 'ABC', ramat_gimur: 'New', degem_cd: 5 },
+      {
+        shnat_yitzur: 2020,
+        misgeret: 'ABC12345',
+        ramat_gimur: 'New',
+        degem_cd: 5,
+        tozeret_cd: 2,
+        sug_degem: 'P',
+      },
     ]),
     private_cars_2: reply([
-      { ramat_gimur: 'Different', degem_cd: '0005', gapam_ind: 0 },
+      {
+        ramat_gimur: 'Different',
+        degem_cd: '0005',
+        gapam_ind: 0,
+        tozeret_cd: '002',
+        sug_degem: 'P',
+      },
     ]),
-    offRoad_2: reply([{ shnat_yitzur: 2018, misgeret: 'DEF', mehir: 100 }]),
+    offRoad_2: reply([
+      { shnat_yitzur: 2018, misgeret: 'DEF54321', mehir: 100 },
+    ]),
+    heavy: reply([]),
+    publicTransport: reply([]),
+    twoWheeled: reply([]),
+    offRoad_1: reply([]),
+    offRoad_3: reply([]),
+    frozen_with_model: reply([]),
+    frozen_no_model: reply([]),
   };
   const report = buildReport('0123456', 'registration', sources, true);
-  expect(report.status).toBe('conflicting');
+  expect(report.status).toBe('listed');
   expect(report.separated).toEqual(['offRoad_2']);
   expect(report.fields.mehir).toBeUndefined();
   expect(report.fields.gapam_ind.chosen).toMatchObject({
@@ -46,6 +68,24 @@ test('retains zero and source provenance and separates conflicting identities', 
     conflicting: true,
   });
   expect(report.fields.degem_cd.conflicting).toBe(false);
+  const same = buildReport(
+    '0123456',
+    'registration',
+    {
+      ...sources,
+      offRoad_2: reply([{ misgeret: 'ABC12345' }]),
+    },
+    true,
+  );
+  expect(same.status).toBe('conflicting');
+  const missing = buildReport(
+    '0123456',
+    'registration',
+    { ...sources, frozen_no_model: { ...reply([]), issue: 'http' } },
+    true,
+  );
+  expect(missing.status).toBe('unknown');
+  expect(missing.statusCoverage).toBe('partial');
 });
 
 test('recognizes the research response shapes and preserves ownership multiplicity', async () => {

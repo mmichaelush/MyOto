@@ -71,20 +71,57 @@ export function modelFilter(row: Row): Filter | undefined {
 }
 
 export function vin(row: Row) {
-  return String(row.misgeret ?? row.mispar_shilda ?? row.shilda ?? '')
-    .trim()
-    .toUpperCase();
+  return [row.misgeret, row.mispar_shilda, row.shilda]
+    .map((value) =>
+      String(value ?? '')
+        .toUpperCase()
+        .replace(/[\s-]/g, ''),
+    )
+    .find((value) => /^[A-Z0-9]{6,30}$/.test(value) && !/^(.)\1+$/.test(value));
 }
 
-export function identityConflict(a: Row, b: Row): boolean {
+export type IdentityMatch = 'verified' | 'candidate' | 'unknown' | 'different';
+
+const code = (value: Scalar | undefined) =>
+  /^\d+$/.test(String(value)) &&
+  Number(value) > 0 &&
+  ![8888, 9999].includes(Number(value))
+    ? Number(value)
+    : undefined;
+
+export function identityMatch(a: Row, b: Row): IdentityMatch {
   const av = vin(a);
   const bv = vin(b);
-  if (av && bv) return av !== bv;
-  return ['tozeret_cd', 'shnat_yitzur', 'degem_cd'].some(
-    (key) =>
-      Number(a[key]) > 0 &&
-      Number(b[key]) > 0 &&
-      Number(a[key]) !== Number(b[key]),
+  if (av && bv) return av === bv ? 'verified' : 'different';
+  const comparable = ['tozeret_cd', 'shnat_yitzur', 'degem_cd']
+    .map((key) => [code(a[key]), code(b[key])])
+    .filter(([left, right]) => left !== undefined && right !== undefined);
+  if (comparable.some(([left, right]) => left !== right)) return 'different';
+  return comparable.length >= 2 ? 'candidate' : 'unknown';
+}
+
+export function privateContinuation(base: Row, supplement: Row) {
+  return (
+    ['tozeret_cd', 'degem_cd'].every(
+      (key) =>
+        code(base[key]) !== undefined &&
+        code(base[key]) === code(supplement[key]),
+    ) &&
+    Boolean(base.sug_degem) &&
+    base.sug_degem === supplement.sug_degem
+  );
+}
+
+export function engineMatch(base: Row, history: Row) {
+  const value = String(base.mispar_manoa ?? '')
+    .trim()
+    .toUpperCase();
+  return (
+    value.length >= 6 &&
+    value ===
+      String(history.mispar_manoa ?? '')
+        .trim()
+        .toUpperCase()
   );
 }
 
