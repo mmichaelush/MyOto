@@ -1,12 +1,13 @@
 ---
 import Site from '../layouts/Site.astro';
+import '../styles/vehicle.css';
 ---
 
 <Site title="בדיקת רכב לפי מספר רישוי" privatePage={true}>
   <section class="panel hero lookup-hero">
     <div class="hero-heading">
       <h1>בדיקת רכב לפי מספר רישוי</h1>
-      <p>פרטי רישוי, נסועה וקריאות שירות ממאגרי משרד התחבורה.</p>
+      <p>מפרט רכב, רישוי, בעלויות וקריאות שירות.</p>
     </div>
     <form id="vehicle-form" class="search">
       <div class="control">
@@ -27,13 +28,6 @@ import Site from '../layouts/Site.astro';
           />
         </div>
       </div>
-      <div class="control">
-        <label for="domain">סוג בדיקה</label>
-        <select id="domain" name="type">
-          <option value="registration">מספר רישוי</option>
-          <option value="equipment">מספר צמ״ה</option>
-        </select>
-      </div>
       <button type="submit" class="lookup-submit">
         <svg
           viewBox="0 0 24 24"
@@ -49,7 +43,7 @@ import Site from '../layouts/Site.astro';
         </svg>
         חיפוש רכב
       </button>
-      <small id="plate-help">4–8 ספרות. אפשר להדביק מספר עם מקפים.</small>
+      <small id="plate-help">4–8 ספרות, עם מקפים או בלי.</small>
     </form>
     <noscript>כדי לבדוק רכב, יש להפעיל JavaScript בדפדפן.</noscript>
   </section>
