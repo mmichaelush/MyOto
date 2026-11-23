@@ -53,7 +53,7 @@ const peak = Math.max(1, ...yearRows.map((row) => row.active));
       </a>
     )}
   </nav>
-  <section class="panel">
+  <section class="panel catalog-heading">
     <h1>
       {make.name}
       {model && (
@@ -203,5 +203,21 @@ const peak = Math.max(1, ...yearRows.map((row) => row.active));
     </section>
   )}
   {model && year && <Cohort id={`${make.id}/${model.id}/${year}`} />}
+  {model && !year && make.models.length > 1 && (
+    <section class="panel">
+      <h2>דגמים נוספים של {make.name}</h2>
+      <div class="model-grid">
+        {make.models
+          .filter((item) => item.id !== model.id)
+          .slice(0, 6)
+          .map((item) => (
+            <a class="model-card" href={makeUrl + item.id + '/'}>
+              <bdi>{item.name}</bdi>
+            </a>
+          ))}
+      </div>
+      <a href={makeUrl}>כל דגמי {make.name}</a>
+    </section>
+  )}
   <CatalogSource />
 </Site>

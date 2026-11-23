@@ -3,7 +3,8 @@ import { dateLabel, displayValue, fieldLabels } from '../domain/format';
 import { formatPlate, parsePlate } from '../domain/plate';
 import type { Field, Report } from '../domain/report';
 import { button, element, link } from './dom';
-import { statusLabels, vehicleName } from './report';
+import { statusLabels, vehicleName } from '../presentation/vehicle-view-model';
+import { mark } from './icons';
 import { resources } from '../data/sources';
 
 const engine = new VehicleEngine();
@@ -14,14 +15,14 @@ let active: AbortController | undefined;
 const highlights = [
   ['shnat_yitzur', 'שנת ייצור'],
   ['ramat_gimur', 'רמת גימור'],
-  ['kilometer_test_aharon', 'נסועה בטסט האחרון'],
+  ['kilometer_test_aharon', 'קילומטראז׳ בטסט האחרון'],
   ['baalut', 'בעלות רשומה'],
 ];
 
 function reportLink(report: Report) {
   const url = new URL(import.meta.env.BASE_URL, location.origin);
   url.searchParams.set('search', report.plate);
-  if (report.domain === 'equipment') url.searchParams.set('type', 'equipment');
+  url.searchParams.set('type', report.domain);
   return link(formatPlate(report.plate), url.href);
 }
 
@@ -81,16 +82,19 @@ function comparison(reports: Report[]) {
   const details = element('section', undefined, 'panel compare-details');
   const tools = element('div', undefined, 'compare-tools');
   const heading = element('h2', 'השוואת מפרט');
-  const share = button('העתקת קישור להשוואה', () => {
-    void navigator.clipboard
-      .writeText(location.href)
-      .then(() => {
-        status.textContent = 'קישור ההשוואה הועתק.';
-      })
-      .catch(() => {
-        status.textContent = 'אפשר להעתיק את קישור ההשוואה משורת הכתובת.';
-      });
-  });
+  const share = mark(
+    button('העתקת קישור להשוואה', () => {
+      void navigator.clipboard
+        .writeText(location.href)
+        .then(() => {
+          status.textContent = 'קישור ההשוואה הועתק.';
+        })
+        .catch(() => {
+          status.textContent = 'אפשר להעתיק את קישור ההשוואה משורת הכתובת.';
+        });
+    }),
+    'share-2',
+  );
   tools.append(heading, share);
   const table = element('table');
   const header = table.createTHead().insertRow();
@@ -129,9 +133,12 @@ function comparison(reports: Report[]) {
     row.append(label);
     for (const entry of entries) {
       const cell = row.insertCell();
-      cell.textContent = entry
-        ? displayValue(key, entry.chosen.value)
-        : 'לא זמין';
+      cell.append(
+        element(
+          'bdi',
+          entry ? displayValue(key, entry.chosen.value) : 'לא זמין',
+        ),
+      );
       if (entry?.conflicting) {
         const origin = resources[entry.chosen.source];
         const note = element('small', 'מקורות חלוקים · ');
@@ -140,8 +147,32 @@ function comparison(reports: Report[]) {
       }
     }
   }
+  const differenceCount = table.querySelectorAll('tr.different').length;
+  const summary = element(
+    'p',
+    differenceCount
+      ? `${differenceCount} הבדלים מאומתים`
+      : 'לא נמצאו הבדלים מאומתים בשדות הזמינים להשוואה.',
+    'muted',
+  );
+  if (differenceCount) {
+    const toggle = button('הבדלים בלבד', () => {
+      const filtered = toggle.getAttribute('aria-pressed') !== 'true';
+      toggle.setAttribute('aria-pressed', String(filtered));
+      for (const group of table.tBodies) {
+        const rows = [...group.rows].slice(1);
+        group.hidden =
+          filtered && !rows.some((row) => row.classList.contains('different'));
+        for (const row of rows)
+          row.hidden = filtered && !row.classList.contains('different');
+      }
+    });
+    toggle.setAttribute('aria-pressed', 'false');
+    tools.append(toggle);
+  }
   details.append(
     tools,
+    summary,
     groups.size ? table : element('p', 'טרם נמצאו שדות להשוואה.'),
   );
   result.replaceChildren(cards, details);
@@ -180,7 +211,13 @@ async function compare(updateUrl: boolean) {
   try {
     const reports = await Promise.all(
       [a, b].map((plate) =>
-        engine.search(plate, 'registration', controller.signal),
+        engine.search(
+          plate,
+          'registration',
+          controller.signal,
+          undefined,
+          false,
+        ),
       ),
     );
     if (controller.signal.aborted) return;
