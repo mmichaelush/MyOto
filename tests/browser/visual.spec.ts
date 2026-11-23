@@ -190,7 +190,11 @@ test('catalog and comparison render on a narrow tablet and print stays readable'
   ).toBeVisible({ timeout: 15000 });
   await page.emulateMedia({ media: 'print' });
   await expect(page.locator('#vehicle-form')).toBeHidden();
-  await expect(page).toHaveScreenshot('print-768.png', { fullPage: true });
+  await expect(page).toHaveScreenshot('print-768.png');
+  const pdf = await page.pdf({ format: 'A4' });
+  expect(
+    pdf.toString('latin1').match(/\/Type\s*\/Page\b/g)?.length ?? 0,
+  ).toBeGreaterThan(1);
 });
 
 test('catalog controls fit all audited widths', async ({ page }) => {
