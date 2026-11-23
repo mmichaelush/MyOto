@@ -269,15 +269,26 @@ export function renderReport(report: Report) {
   const timeline = [
     [report.fields.rishum_rishon_dt?.chosen, 'רישום ראשון'],
     [report.fields.mivchan_acharon_dt?.chosen, 'מבחן רישוי אחרון'],
-    [report.fields.bitul_dt?.chosen ?? report.fields.taarich_bitzul?.chosen, 'ביטול רישום'],
+    [
+      report.fields.bitul_dt?.chosen ?? report.fields.taarich_bitzul?.chosen,
+      'ביטול רישום',
+    ],
   ] as const;
-  const events = timeline.flatMap(([field, label]) => field ? [{ field, label }] : [])
+  const events = timeline
+    .flatMap(([field, label]) => (field ? [{ field, label }] : []))
     .sort((a, b) => dateOrder(b.field.value) - dateOrder(a.field.value));
   if (events.length) {
     const section = element('section', undefined, 'panel');
     section.append(
       element('h3', 'מועדים ברישוי'),
-      rowsTable(['מועד', 'אירוע', 'מקור'], events.map(({ field, label }) => [dateLabel(field.value), label, resources[field.source].label])),
+      rowsTable(
+        ['מועד', 'אירוע', 'מקור'],
+        events.map(({ field, label }) => [
+          dateLabel(field.value),
+          label,
+          resources[field.source].label,
+        ]),
+      ),
     );
     article.append(section);
   }

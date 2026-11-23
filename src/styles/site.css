@@ -668,7 +668,7 @@ meter {
   th {
     print-color-adjust: exact;
   }
-  .compact-print .vehicle-report > :not(.report-summary) {
+  .compact-print .vehicle-report > :not(.report-summary, .notice) {
     display: none;
   }
 }
