@@ -23,22 +23,71 @@ const regular = [
 ] as const;
 export const registrationRequestBudget = 28;
 
+export type Discovery = {
+  reports: Report[];
+  checks: Record<SearchDomain, 'found' | 'empty' | 'partial'>;
+};
+
 export class VehicleEngine {
   constructor(private readonly client = new CkanClient()) {}
 
-  async search(
+  search(
     input: string,
     domain: SearchDomain,
     signal: AbortSignal,
     update?: (report: Report) => void,
+    legacyFallback = true,
+  ): Promise<Report> {
+    return this.lookup(
+      input,
+      domain,
+      signal,
+      new RequestBudget(domain === 'equipment' ? 6 : registrationRequestBudget),
+      update,
+      legacyFallback && domain === 'registration',
+    );
+  }
+
+  async discover(
+    input: string,
+    signal: AbortSignal,
+    update?: (report: Report) => void,
+  ): Promise<Discovery> {
+    // The two namespaces share the HTTP budget but never share source records.
+    const budget = new RequestBudget(registrationRequestBudget);
+    const [registration, equipment] = await Promise.all([
+      this.lookup(input, 'registration', signal, budget, (report) => {
+        if (!report.complete) update?.(report);
+      }),
+      this.lookup(input, 'equipment', signal, budget),
+    ]);
+    const check = (report: Report) =>
+      report.identity && !report.sources[report.identity]?.issue
+        ? 'found'
+        : report.outcome === 'empty'
+          ? 'empty'
+          : 'partial';
+    return {
+      reports: [registration, equipment],
+      checks: {
+        registration: check(registration),
+        equipment: check(equipment),
+      },
+    };
+  }
+
+  private async lookup(
+    input: string,
+    domain: SearchDomain,
+    signal: AbortSignal,
+    budget: RequestBudget,
+    update?: (report: Report) => void,
+    legacyFallback = false,
   ): Promise<Report> {
     const plate = parsePlate(input);
     if (!plate)
       throw new RangeError('Invalid registration or equipment number');
     const sources: SourceReplies = {};
-    const budget = new RequestBudget(
-      domain === 'equipment' ? 6 : registrationRequestBudget,
-    );
     let published = false;
     const publish = () => {
       if (!update || published || signal.aborted) return;
@@ -127,7 +176,7 @@ export class VehicleEngine {
         if (campaignIds.length)
           await query('campaigns', { RECALL_ID: campaignIds });
       } else if (
-        !sources.private_cars_1?.issue &&
+        legacyFallback &&
         regular.every((key) => !sources[key]?.issue)
       ) {
         // Maintain old number-only links for equipment without combining the domains.

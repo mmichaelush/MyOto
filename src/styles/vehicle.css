@@ -1,0 +1,417 @@
+:root {
+  --paper: #fff;
+  --wash: #f2f7fc;
+  --edge: #dee8f1;
+  --light: #edf5ff;
+  --blue: #245ea9;
+  --ink: #163254;
+  --muted: #516580;
+  --spacing: clamp(1rem, 2.4vw, 1.5rem);
+  --radius: 0.85rem;
+}
+
+body:has(.lookup-hero) {
+  background: #f1f7fc;
+}
+main:has(.lookup-hero) {
+  padding-block: clamp(0.85rem, 2.6vw, 1.75rem);
+}
+.hero.lookup-hero {
+  position: static;
+  overflow: visible;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: clamp(0.9rem, 3vw, 1.65rem);
+  box-shadow: 0 10px 30px #284b6d0c;
+  text-align: center;
+  margin-block-end: 0.85rem;
+}
+.lookup-hero .hero-heading h1 {
+  max-width: none;
+  color: var(--ink);
+  font-size: clamp(1.33rem, 3.4vw, 2rem);
+  line-height: 1.28;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  margin: 0 0 0.22rem;
+}
+.lookup-hero .hero-heading p {
+  color: var(--muted);
+  margin-block-end: 0.85rem;
+  font-size: 0.98rem;
+}
+.lookup-hero #vehicle-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  max-inline-size: 31rem;
+  margin-inline: auto;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  gap: 0.22rem 0.6rem;
+}
+.lookup-hero #vehicle-form .control {
+  grid-column: auto;
+  margin: 0;
+  gap: 0.26rem;
+}
+.lookup-hero .control label {
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+.lookup-hero #vehicle-form .plate-input,
+.lookup-hero #vehicle-form .lookup-submit {
+  height: 3rem;
+}
+.lookup-hero .plate-input {
+  background: linear-gradient(180deg, #ffd34f, #ffc936);
+}
+.lookup-hero #vehicle-form #plate-help {
+  text-align: start;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.lookup-hero #vehicle-form .lookup-submit {
+  padding-inline: 0.85rem;
+}
+@media (max-width: 27rem) {
+  .lookup-hero #vehicle-form .lookup-submit {
+    font-size: 0.9rem;
+    padding-inline: 0.62rem;
+  }
+  .lookup-hero #vehicle-form .lookup-submit svg {
+    width: 17px;
+  }
+  .lookup-hero .hero-heading p {
+    font-size: 0.88rem;
+  }
+  .lookup-hero .plate-country {
+    padding-inline: 0.48rem;
+  }
+}
+
+#search-status:not(:empty) {
+  background: transparent;
+  border: 0;
+  padding: 0.2rem 0.1rem;
+  margin-block: 0.3rem 0.7rem;
+  font-size: 0.88rem;
+}
+.ui-icon {
+  display: inline-block;
+  width: 1.08em;
+  height: 1.08em;
+  flex: 0 0 auto;
+}
+.with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.44em;
+}
+.vehicle-report {
+  min-inline-size: 0;
+}
+.vehicle-report .report-summary {
+  background: var(--paper);
+  border: 1px solid var(--edge);
+  border-block-start: 3px solid var(--blue);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 20px #284b6d0c;
+  padding: var(--spacing);
+  text-align: start;
+}
+.report-summary .vehicle-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.64rem 1rem;
+  align-items: start;
+}
+.report-summary .vehicle-title h2 {
+  font-size: clamp(1.34rem, 3.3vw, 2.1rem);
+  line-height: 1.25;
+  margin: 0;
+}
+.report-summary .vehicle-title p.muted {
+  margin-block: 0.22rem 0;
+  font-size: 0.92rem;
+}
+.report-summary .vehicle-status {
+  margin-block: 0.48rem 0;
+  padding: 0.14rem 0.56rem;
+  border-radius: 999px;
+}
+.report-summary .report-plate {
+  font-size: clamp(1rem, 3.7vw, 1.5rem);
+}
+.report-summary .report-plate bdi {
+  padding: 0.2rem 0.5rem;
+}
+.report-summary .report-plate .plate-country {
+  padding: 0.2rem 0.38rem;
+}
+.report-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  gap: 0.55rem;
+  margin: 0.9rem 0 0.6rem;
+}
+.data-metric {
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.56rem;
+  background: var(--light);
+}
+.data-metric dt {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.data-metric dt .ui-icon {
+  color: var(--blue);
+}
+.data-metric dd {
+  margin: 0;
+  font-size: 1.13rem;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+.report-source-note {
+  margin: 0.6rem 0 0;
+  font-size: 0.78rem;
+}
+.report-summary > .actions {
+  margin: 0.75rem 0 0;
+  padding-block-start: 0.55rem;
+  gap: 0.35rem 0.55rem;
+}
+.report-summary .actions > a,
+.report-more > summary {
+  padding: 0.38rem 0.55rem;
+  min-height: 44px;
+  font-weight: 670;
+  border-radius: 0.45rem;
+}
+.report-summary .actions > a {
+  text-decoration: none;
+}
+.report-summary .actions > a:hover,
+.report-more > summary:hover {
+  background: var(--light);
+}
+.report-summary .actions button {
+  font-size: 0.88rem;
+  min-height: 44px;
+  padding: 0.35rem 0.6rem;
+}
+.report-more {
+  inline-size: auto;
+}
+.report-more[open] {
+  inline-size: 100%;
+}
+.report-more summary {
+  cursor: pointer;
+  color: var(--blue);
+}
+.report-action-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-block-start: 0.25rem;
+}
+.report-alerts {
+  list-style: none;
+  margin: 0 0 0.8rem;
+  padding: 0.65rem 0.8rem;
+  border-inline-start: 3px solid #e4ad49;
+  border-radius: 0.4rem;
+  font-size: 0.9rem;
+  color: #553914;
+}
+.report-alerts li + li {
+  margin-block-start: 0.28rem;
+}
+.report-sections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 0.85rem;
+  margin-block: 0.85rem;
+}
+.data-section,
+.source-list {
+  background: var(--paper);
+  border-radius: var(--radius);
+  border: 1px solid var(--edge);
+  padding: 0.9rem var(--spacing);
+  min-inline-size: 0;
+}
+.data-section h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.07rem;
+}
+.data-section h3 .ui-icon {
+  background: var(--light);
+  color: var(--blue);
+  padding: 0.28rem;
+  width: 1.72rem;
+  height: 1.72rem;
+  border-radius: 0.45rem;
+}
+.data-section dl {
+  margin: 0;
+}
+.data-section dl + dl {
+  margin-block-start: 0.65rem;
+  border-block-start: 1px solid var(--edge);
+}
+.data-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.04fr) minmax(0, 1fr);
+  gap: 0.22rem 0.55rem;
+  align-items: baseline;
+  min-block-size: 34px;
+  padding-block: 0.32rem;
+  border-block-end: 1px solid #edf2f7;
+}
+.data-row:last-child {
+  border-block-end: 0;
+}
+.data-row dt {
+  color: var(--muted);
+  font-size: 0.89rem;
+  overflow-wrap: anywhere;
+}
+.data-row dd {
+  margin: 0;
+  font-size: 0.91rem;
+  font-weight: 640;
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+.field-disclosure {
+  color: var(--muted);
+  font-size: 0.79rem;
+  text-align: start;
+}
+.field-disclosure summary {
+  cursor: pointer;
+  min-block-size: 30px;
+}
+.field-disclosure p {
+  margin: 0.22rem 0;
+}
+.field-disclosure small {
+  display: block;
+}
+.section-note {
+  margin: 0.25rem 0 0.4rem;
+  font-size: 0.83rem;
+}
+.data-section table {
+  font-size: 0.9rem;
+}
+.data-section th,
+.data-section td {
+  padding: 0.38rem 0.4rem;
+  overflow-wrap: anywhere;
+}
+.vehicle-report > .data-section {
+  margin-block: 0.85rem;
+}
+.source-list {
+  margin-block: 0.85rem;
+}
+.source-list summary {
+  color: var(--blue);
+}
+.source-list .raw-source {
+  border-block-start: 1px solid var(--edge);
+  padding-block-start: 0.5rem;
+  line-height: 1.4;
+}
+.source-list .raw-source p {
+  margin: 0.4rem 0;
+  font-size: 0.85rem;
+}
+.result-chooser h2 {
+  margin-block-end: 0.25rem;
+}
+.result-chooser p {
+  color: var(--muted);
+}
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+  gap: 0.65rem;
+}
+.choice-grid button {
+  text-align: start;
+  padding: 0.65rem 0.85rem;
+}
+.choice-grid button span {
+  min-width: 0;
+  display: grid;
+}
+.choice-grid button bdi {
+  overflow-wrap: anywhere;
+}
+.saved-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.saved-heading > h2 {
+  margin: 0;
+}
+#saved .saved-heading > button {
+  font-size: 0.82rem;
+}
+#saved .saved-items {
+  gap: 0.35rem;
+}
+#saved .saved-items a {
+  padding: 0.4rem 0.55rem;
+}
+
+@media (max-width: 46rem) {
+  .report-sections {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 27rem) {
+  .report-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .report-summary .report-plate .plate-country {
+    padding-inline: 0.28rem;
+  }
+  .report-summary .report-plate bdi {
+    padding-inline: 0.32rem;
+  }
+}
+@media print {
+  .report-sections {
+    display: block;
+  }
+  .report-sections .data-section {
+    margin-block: 0.5rem;
+  }
+  .data-section,
+  .vehicle-report .report-summary {
+    box-shadow: none;
+    border: 0;
+  }
+  .data-metric,
+  .report-plate {
+    print-color-adjust: exact;
+  }
+  .data-row {
+    break-inside: avoid;
+  }
+  .report-source-note {
+    color: black;
+  }
+}

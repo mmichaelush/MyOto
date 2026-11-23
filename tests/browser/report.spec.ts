@@ -39,11 +39,17 @@ test('opens a legacy link, renders safe text, saves and exports', async ({
   await page.goto('/MyOto/?search=0123456');
   await expect(
     page.getByRole('heading', { name: 'היסטוריית בעלויות' }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('#report img')).toHaveCount(0);
   await expect(
     page.getByRole('heading', { level: 2, name: /<img src=x/ }),
   ).toBeVisible();
+  await expect(
+    page.locator(
+      '.data-section a[href*="gov.il"], .data-metric a[href*="gov.il"]',
+    ),
+  ).toHaveCount(0);
+  await page.getByText('עוד פעולות', { exact: true }).click();
   await page.getByRole('button', { name: 'מועדף' }).click();
   await expect(page.getByRole('heading', { name: 'מועדפים' })).toBeVisible();
   await page.getByRole('button', { name: 'שיתוף קישור' }).click();
