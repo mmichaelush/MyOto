@@ -8,14 +8,13 @@
 
 ```sh
 npm ci
-npm run dev
 npm run verify
 npx playwright install chromium
 npm run test:e2e
-npm run preview
+npm run preview -- --host 127.0.0.1 --port 4322
 ```
 
-כתובת הבדיקה המקומית היא `http://localhost:4321/MyOto/`. `npm run build` כותב אתר סטטי ל־`dist`. אפשר לשנות את נתיב הבסיס באמצעות `MYOTO_BASE`.
+כתובת הבדיקה המקומית היא `http://127.0.0.1:4322/MyOto/`. `npm run build` כותב אתר סטטי ל־`dist`. אפשר לשנות את נתיב הבסיס באמצעות `MYOTO_BASE`. לפיתוח עם טעינה מחדש מריצים `npm run dev` בתהליך נפרד.
 
 ## שינוי מקורות ועמודים
 
@@ -24,6 +23,8 @@ npm run preview
 - מוסיפים עמודי Astro ב־`src/pages` וקישורים דרך `import.meta.env.BASE_URL`. עמודי קטלוג מקבלים נתיבים מתצלום הנתונים ומייצרים HTML בזמן הבנייה.
 - רענון הקטלוג מריץ `node scripts/refresh-catalog.mjs` ואחריו `node scripts/refresh-cohorts.mjs`. במסוף עם תעודת שורש מקומית אפשר להריץ את Node עם `--use-system-ca`. שני הסקריפטים מחליפים את תמונת המצב רק לאחר הצלחה ואימות.
 
-הקטלוג הראשוני מכסה 12 כינויים מסחריים של שלושה יצרנים. ספירות מוצגות לפי קבוצות קוד דגם ושנה. התפלגויות רכבים ונסועה קיימות רק בשנתונים שסומנו למדגם ותועדו בהם הכיסוי ותאריך הדגימה.
+הקטלוג נוצר ממאגר הכמויות הארצי וכולל 142 יצרנים ו־6,028 דגמים בתמונת המצב שנבדקה. ספירות מוצגות לפי קבוצות קוד דגם ושנה. התפלגויות קיימות בשלושה שנתונים שנבדקו, עם שיטת הדגימה ושיעור הכיסוי. רענון הקטלוג מתחדש מנקודת הבקרה של אותו עדכון מקור ומחליף את הקובץ רק לאחר אימות.
 
-[ארכיטקטורה](docs/architecture.md) · [אימות ו־QA](docs/validation.md) · [שחרור וחזרה לגרסה קודמת](docs/release.md) · [רישיון הנתונים](https://data.gov.il/he/terms-of-use) · [אתר הייצור](https://mmichaelush.github.io/MyOto/)
+בדיקת המקורות החיה נפרדת מהבדיקות האוטומטיות המקומיות. מריצים `node --use-system-ca scripts/check-sources.mjs` כדי לאמת סכמה, מסננים מדויקים ועימוד ארכיון מול הספק. [כיסוי מקורות וחוזה הייצוא](docs/source-coverage.md)
+
+[ארכיטקטורה](docs/architecture.md) · [סקירת שבעת ה־PRs](docs/review-round-2.md) · [אימות ו־QA](docs/validation.md) · [שחרור וחזרה לגרסה קודמת](docs/release.md) · [רישיון הנתונים](https://data.gov.il/he/terms-of-use) · [אתר הייצור](https://mmichaelush.github.io/MyOto/)
