@@ -55,3 +55,24 @@ test('opens a legacy link, renders safe text, saves and exports', async ({
   await page.getByRole('button', { name: 'JSON', exact: true }).click();
   expect((await exportEvent).suggestedFilename()).toBe('car-0123456.json');
 });
+
+test('fits a mobile viewport and links into comparison', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 760 });
+  await page.goto('/MyOto/');
+  await page.getByLabel('מספר רישוי או צמ״ה').fill('0123456');
+  await page.getByRole('button', { name: 'חיפוש רכב' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'היסטוריית בעלויות' }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    360,
+  );
+  await page.getByRole('link', { name: 'השוואה לרכב נוסף' }).click();
+  await expect(page.getByLabel('רכב ראשון')).toHaveValue('0123456');
+  await page.getByLabel('רכב שני').fill('12345678');
+  await page.getByRole('button', { name: 'השוואה' }).click();
+  await expect(page.getByRole('table')).toBeVisible();
+  await page.goBack();
+  await expect(page.getByLabel('רכב ראשון')).toHaveValue('0123456');
+  await expect(page.getByLabel('רכב שני')).toHaveValue('');
+});

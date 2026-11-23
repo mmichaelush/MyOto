@@ -190,6 +190,14 @@ function renderActions(report: Report) {
     ),
     save,
   );
+  if (report.domain === 'registration') {
+    const compare = new URL(
+      import.meta.env.BASE_URL + 'compare/',
+      location.origin,
+    );
+    compare.searchParams.set('a', report.plate);
+    actions.append(link('השוואה לרכב נוסף', compare.href));
+  }
 }
 
 async function search(plate: string, domain: SearchDomain, navigate: boolean) {
@@ -229,6 +237,16 @@ async function search(plate: string, domain: SearchDomain, navigate: boolean) {
         ...read('myoto-recent').filter((item) => !same(item, entry)),
       ]);
       renderSaved();
+      const reportElement = output.firstElementChild;
+      if (result.fields.kilometer_test_aharon) {
+        void import('./mileage')
+          .then(({ mileageComparison }) => {
+            if (request.signal.aborted) return;
+            const comparison = mileageComparison(result);
+            if (comparison) reportElement?.append(comparison);
+          })
+          .catch(() => {});
+      }
     }
   } catch {
     if (!request.signal.aborted)
