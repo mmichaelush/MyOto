@@ -26,7 +26,8 @@ const base = import.meta.env.BASE_URL;
     <header class="site-header">
       <nav class="wrap" aria-label="ניווט ראשי">
         <a class="brand" href={base}>
-          <span class="brand-mark" aria-hidden="true"></span><bdi>MyOto</bdi>
+          <span class="brand-mark" aria-hidden="true"></span>
+          <bdi>MyOto</bdi>
         </a>
         <a
           href={base}
@@ -34,8 +35,22 @@ const base = import.meta.env.BASE_URL;
         >
           בדיקת רכב
         </a>
-        <a href={base + 'models/'} aria-current={Astro.url.pathname.startsWith(base + 'models/') ? 'page' : undefined}>יצרנים ודגמים</a>
-        <a href={base + 'compare/'} aria-current={Astro.url.pathname === base + 'compare/' ? 'page' : undefined}>השוואת רכבים</a>
+        <a
+          href={base + 'models/'}
+          aria-current={
+            Astro.url.pathname.startsWith(base + 'models/') ? 'page' : undefined
+          }
+        >
+          יצרנים ודגמים
+        </a>
+        <a
+          href={base + 'compare/'}
+          aria-current={
+            Astro.url.pathname === base + 'compare/' ? 'page' : undefined
+          }
+        >
+          השוואת רכבים
+        </a>
       </nav>
     </header>
     <main class="wrap" id="main">
