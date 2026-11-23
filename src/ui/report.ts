@@ -10,12 +10,12 @@ import { formatPlate } from '../domain/plate';
 import type { Report } from '../domain/report';
 import { element, link } from './dom';
 
-const statusLabels = {
+export const statusLabels = {
   listed: 'מופיע במרשם רישוי פעיל',
   inactive: 'מופיע במאגר רכב לא פעיל',
   cancelled: 'מופיע במאגר ביטול סופי',
-  conflicting: 'נמצאו רשומות רישוי וסטטוס חופפות',
-  unknown: 'סטטוס רישוי לא זמין',
+  conflicting: 'מקורות הרישוי חלוקים לגבי אותו רכב',
+  unknown: 'סטטוס רישוי טרם אומת',
 };
 const issueLabels = {
   network: 'שגיאת רשת',
@@ -24,6 +24,7 @@ const issueLabels = {
   'invalid-response': 'תגובה לא תקינה',
   schema: 'שינוי בסכמת המקור',
   incomplete: 'נתונים חלקיים',
+  budget: 'בדיקה הופסקה בגבול הבקשות',
 };
 const formatRetrieved = (stamp: string) =>
   new Intl.DateTimeFormat('he-IL', {
@@ -34,7 +35,11 @@ const formatRetrieved = (stamp: string) =>
 
 function state(reply?: Reply) {
   if (!reply) return 'לא נבדק';
-  if (reply.issue) return issueLabels[reply.issue];
+  if (reply.issue)
+    return (
+      issueLabels[reply.issue] +
+      (reply.rows.length ? ` · ${reply.rows.length} רשומות התקבלו` : '')
+    );
   if (!reply.rows.length) return 'לא נמצאה התאמה במאגר';
   return `${reply.rows.length} רשומות`;
 }
@@ -64,12 +69,13 @@ function plate(report: Report) {
   return node;
 }
 
-function pair(title: string, value: string, source?: SourceId) {
+function pair(title: string, value: string, source?: SourceId, stamp?: string) {
   const row = element('div', undefined, 'datum');
   const definition = element('dd', value);
   if (source) {
     const small = element('small');
     small.append(link(resources[source].label, resources[source].url));
+    if (stamp) small.append(element('span', `נשלף ${formatRetrieved(stamp)}`));
     definition.append(small);
   }
   row.append(element('dt', title), definition);
@@ -102,7 +108,16 @@ function sourceDetails(report: Report) {
   for (const [id, reply] of Object.entries(report.sources)) {
     const resource = resources[id as SourceId];
     const item = element('details', undefined, 'raw-source');
-    const summary = element('summary', `${resource.label} · ${state(reply)}`);
+    const key = id as SourceId;
+    const match = report.separated.includes(key)
+      ? ' · זהות אחרת נמצאה'
+      : report.unverified.includes(key)
+        ? ' · התאמת זהות לא אומתה'
+        : '';
+    const summary = element(
+      'summary',
+      `${resource.label} · ${state(reply)}${match}`,
+    );
     const source = element(
       'p',
       `נשלף ${formatRetrieved(reply.fetchedAt)} · ${reply.durationMs} מילישניות · `,
@@ -162,13 +177,28 @@ export function renderReport(report: Report) {
     return article;
   }
   const summary = element('section', undefined, 'panel report-summary');
-  summary.append(plate(report), element('h2', vehicleName(report)));
+  const heading = element('div', undefined, 'vehicle-heading');
+  const title = element('div', undefined, 'vehicle-title');
+  title.append(element('h2', vehicleName(report)));
   const kind =
     report.fields.sug_rechev_nm?.chosen.value ??
     (report.identity === 'cme' ? 'צמ״ה' : undefined);
   const trim = report.fields.ramat_gimur?.chosen.value;
   if (kind || trim)
-    summary.append(element('p', [kind, trim].filter(Boolean).join(' · ')));
+    title.append(
+      element('p', [kind, trim].filter(Boolean).join(' · '), 'muted'),
+    );
+  heading.append(title, plate(report));
+  summary.append(heading);
+  if (report.domain === 'registration') {
+    const status =
+      report.statusCoverage === 'pending'
+        ? 'בודק סטטוס רישוי…'
+        : statusLabels[report.status];
+    summary.append(
+      element('p', status, `vehicle-status status-${report.status}`),
+    );
+  }
   const cards = element('dl', undefined, 'grid-data summary-data');
   for (const [key, label] of [
     ['tokef_dt', 'תוקף רישוי'],
@@ -179,19 +209,33 @@ export function renderReport(report: Report) {
     cards.append(
       pair(
         label,
-        observation ? displayValue(key, observation.value) : 'לא זמין',
+        observation
+          ? displayValue(key, observation.value)
+          : report.complete
+            ? 'לא זמין'
+            : 'בבדיקה',
         observation?.source,
+        observation?.fetchedAt,
       ),
     );
   }
   if (report.domain === 'registration') {
     cards.append(
-      pair('סטטוס רישוי', statusLabels[report.status]),
-      pair('ריקול לפי לוחית', state(report.sources.recall), 'recall'),
+      pair(
+        'ריקול לפי לוחית',
+        report.sources.recall
+          ? state(report.sources.recall)
+          : report.complete
+            ? 'לא נבדק'
+            : 'בבדיקה',
+        'recall',
+        report.sources.recall?.fetchedAt,
+      ),
       pair(
         'תג חניה לנכה',
         state(report.sources.disabledPermit),
         'disabledPermit',
+        report.sources.disabledPermit?.fetchedAt,
       ),
     );
   }
@@ -221,13 +265,37 @@ export function renderReport(report: Report) {
     );
   if (!report.complete) return article;
 
+  if (report.unverified.length)
+    article.append(
+      element(
+        'p',
+        'מקורות עם התאמה חלקית זמינים תחת מקורות ונתונים גולמיים.',
+        'panel notice',
+      ),
+    );
+
+  if (report.sources.recall?.rows.length) {
+    const notice = element(
+      'p',
+      'נמצאה התאמה במאגר הריקולים לפי מספר רישוי. ',
+      'panel notice',
+    );
+    notice.append(
+      link(
+        'בדיקה רשמית והנחיות',
+        'https://www.gov.il/he/service/recall-vehicle',
+      ),
+    );
+    article.append(notice);
+  }
+
   if (report.ownership.length) {
     const ownership = element('section', undefined, 'panel');
     ownership.append(
       element('h3', 'היסטוריית בעלויות'),
       element(
         'p',
-        `${report.ownership.filter((row) => row.baalut && row.baalut !== 'סוחר').length} רישומי בעלות במדגם הזמין, למעט רישומי סוחר. מועד הבעלות מעוגל לרבעון.`,
+        `${report.ownership.length} רישומים לפי לוחית, כולל סוחרים. המאגר מדווח ברמת רבעון, והכיסוי עשוי להיות חלקי.`,
         'muted',
       ),
       rowsTable(
@@ -240,6 +308,39 @@ export function renderReport(report: Report) {
     );
     article.append(ownership);
   }
+  const history = report.sources.history_1;
+  if (history?.rows.length && report.unverified.includes('history_1')) {
+    const context = supplementary(
+      'history_1',
+      'נתוני טסט ושינויים לפי לוחית',
+      history.rows,
+      {
+        kilometer_test_aharon: 'נסועה בטסט האחרון',
+        rishum_rishon_dt: 'רישום ראשון',
+      },
+      true,
+    );
+    context.insertBefore(
+      element(
+        'p',
+        'המקור זוהה לפי לוחית בלבד. התאמה לרכב הנוכחי טרם אומתה.',
+        'muted',
+      ),
+      context.children[1] ?? null,
+    );
+    article.append(context);
+  }
+  const filters = report.sources.filters;
+  if (filters?.rows.length)
+    article.append(
+      supplementary(
+        'filters',
+        'מסנן פליטות לפי לוחית',
+        filters.rows,
+        { taarich_hatkana: 'התקנה' },
+        true,
+      ),
+    );
   if (report.recalls.length) {
     const notices = element('section', undefined, 'panel');
     notices.append(
