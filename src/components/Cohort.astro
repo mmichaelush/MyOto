@@ -18,8 +18,10 @@ const distributions = stat
   <section class="panel">
     <h2>מדגם רכבים פעילים מהשנתון</h2>
     <p class="muted">
-      החישוב מבוסס על {stat.n} לוחיות תואמות מתוך הרשומות הראשונות לפי סדר
-      המאגר. סדר זה עשוי להטות את התוצאות. נשלף ב־{fetchedAt.slice(0, 10)}.
+      {stat.frameSize
+        ? `מדגם שיטתי של ${stat.n} כלי רכב תואמים מתוך ${count.format(stat.frameSize)} שורות במרשם הפעיל. הדגימה נפרסת על פני שמונה מקטעי רישוי ואינה אקראית.`
+        : `מדגם נוחות של ${stat.n} כלי רכב תואמים מתחילת המאגר.`}
+      נשלף ב־{fetchedAt.slice(0, 10)}.
     </p>
     <div class="grid-data">
       {distributions.map(([label, values]) => (
@@ -46,7 +48,10 @@ const distributions = stat
       <dl class="grid-data">
         <div class="datum">
           <dt>קריאות זמינות במדגם</dt>
-          <dd>{stat.mileage.n}</dd>
+          <dd>
+            {stat.mileage.n} מתוך {stat.n} (
+            {Math.round((stat.mileage.n / stat.n) * 100)}%)
+          </dd>
         </div>
         <div class="datum">
           <dt>חציון</dt>
@@ -63,6 +68,10 @@ const distributions = stat
     ) : (
       <p>אין במדגם מספיק קריאות זמינות להצגת התפלגות נסועה.</p>
     )}
+    <p class="muted">
+      החישוב מסנן קריאות אפס, ערכים מעל שני מיליון ק״מ וקריאות סותרות לאותה
+      לוחית.
+    </p>
     <p class="muted">
       <a href={resources.private_cars_1.url}>רישוי פעיל</a> ·{' '}
       <a href={resources.history_1.url}>נסועה מהיסטוריית הרכב</a>

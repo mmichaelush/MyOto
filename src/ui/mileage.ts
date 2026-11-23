@@ -32,7 +32,7 @@ export function mileageComparison(report: Report): HTMLElement | undefined {
     ),
     element(
       'p',
-      `המדגם מבוסס על סדר רשומות המאגר. נשלף ב־${fetchedAt.slice(0, 10)}.`,
+      `המדגם מפוזר על מקטעים בסדר הלוחיות. נשלף ב־${fetchedAt.slice(0, 10)}.`,
       'muted',
     ),
     link(

@@ -3,9 +3,9 @@ import Site from '../layouts/Site.astro';
 ---
 
 <Site title="השוואת רכבים" privatePage={true}>
-  <section class="panel">
+  <section class="panel compare-intro">
     <h1>השוואת רכבים</h1>
-    <p>הזינו שני מספרי רישוי כדי להשוות את הנתונים שנמצאו.</p>
+    <p>בדקו מפרט, מצב רישוי ונסועה של שני כלי רכב זה לצד זה.</p>
     <form class="search" id="compare">
       <label class="control">
         רכב ראשון
@@ -33,7 +33,7 @@ import Site from '../layouts/Site.astro';
     </form>
   </section>
   <p role="status" id="comparison-status"></p>
-  <section id="comparison" class="panel table-scroll" hidden></section>
+  <section id="comparison" hidden aria-label="תוצאות השוואה"></section>
 </Site>
 <script>
   import '../ui/compare';

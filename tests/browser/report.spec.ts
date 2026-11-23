@@ -72,9 +72,58 @@ test('fits a mobile viewport and links into comparison', async ({ page }) => {
   await page.getByLabel('רכב שני').fill('12345678');
   await page.getByRole('button', { name: 'השוואה' }).click();
   await expect(page.getByRole('table')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'השוואת מפרט' }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    360,
+  );
   await page.goBack();
   await expect(page.getByLabel('רכב ראשון')).toHaveValue('0123456');
   await expect(page.getByLabel('רכב שני')).toHaveValue('');
+});
+
+test('replaces an in-flight lookup and keeps the new result and URL', async ({
+  page,
+}) => {
+  const firstKey = '11111222';
+  const secondKey = '33333444';
+  await page.route(
+    (url) =>
+      url.hostname === 'data.gov.il' &&
+      url.searchParams.get('resource_id') === resources.private_cars_1.id,
+    async (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      const filter = JSON.parse(params.get('filters') ?? '{}');
+      const first = filter.mispar_rechev === Number(firstKey);
+      if (first) await new Promise((resolve) => setTimeout(resolve, 600));
+      await route.fulfill({
+        headers: { 'access-control-allow-origin': '*' },
+        json: {
+          success: true,
+          result: {
+            records: [
+              { ...filter, tozeret_nm: first ? 'דוח קודם' : 'דוח חדש' },
+            ],
+          },
+        },
+      });
+    },
+  );
+  await page.goto('/MyOto/');
+  const input = page.getByLabel('מספר רישוי או צמ״ה');
+  const sent = page.waitForRequest((request) =>
+    request.url().includes(firstKey),
+  );
+  await input.fill(firstKey);
+  await input.press('Enter');
+  await sent;
+  await input.fill(secondKey);
+  await input.press('Enter');
+  await expect(page.getByRole('heading', { name: 'דוח חדש' })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp('search=' + secondKey));
+  await expect(page.getByText('דוח קודם')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'שיתוף קישור' })).toBeVisible();
 });
 
 test('prints and downloads the report image', async ({ page }) => {

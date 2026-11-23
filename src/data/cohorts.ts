@@ -3,6 +3,7 @@ import data from './cohorts.json' with { type: 'json' };
 type Cohort = {
   variantKeys: string[];
   n: number;
+  frameSize?: number;
   colors: [string, number][];
   ownership: [string, number][];
   fuel: [string, number][];

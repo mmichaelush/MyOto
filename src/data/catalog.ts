@@ -1,9 +1,29 @@
-import snapshot from './catalog.json' with { type: 'json' };
+import snapshot from './catalog.json?raw';
 
-export const catalog = snapshot;
-export type Make = (typeof catalog.makes)[number];
-export type Model = Make['models'][number];
-export type Variant = Model['records'][number];
+export type Variant = {
+  id: string;
+  year: number;
+  code: number;
+  type: string;
+  name: string;
+  active: number;
+  inactive: number;
+  variants: [string | null, string | null, number | null, number | null][];
+};
+export type Model = {
+  id: string;
+  name: string;
+  aliases: string[];
+  records: Variant[];
+};
+export type Make = { id: string; name: string; models: Model[] };
+type Catalog = {
+  updatedAt: string;
+  fetchedAt: string;
+  excluded?: number;
+  makes: Make[];
+};
+export const catalog: Catalog = JSON.parse(snapshot);
 
 export function totals(rows: Variant[]) {
   return rows.reduce(

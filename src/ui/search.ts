@@ -101,6 +101,9 @@ function download(filename: string, content: unknown) {
 
 function renderActions(report: Report) {
   const url = address(report);
+  const actionFeedback = (content: string) => {
+    if (actions.isConnected) message.textContent = content;
+  };
   const summary = [
     vehicleName(report),
     report.plate,
@@ -112,10 +115,9 @@ function renderActions(report: Report) {
   const copy = async (value: string, success: string) => {
     try {
       await navigator.clipboard.writeText(value);
-      message.textContent = success;
+      actionFeedback(success);
     } catch {
-      message.textContent =
-        'ההעתקה לא זמינה בדפדפן זה. אפשר לסמן ולהעתיק את הקישור או את הטקסט.';
+      actionFeedback('ההעתקה לא זמינה בדפדפן זה. אפשר להעתיק משורת הכתובת.');
     }
   };
   const share = button('שיתוף קישור', () => {
@@ -160,15 +162,36 @@ function renderActions(report: Report) {
     button('תמונה PNG', () => {
       const article = output.querySelector<HTMLElement>('.vehicle-report');
       if (!article) return;
+      const scale = Math.min(
+        1,
+        8192 / article.scrollHeight,
+        Math.sqrt(8_000_000 / (article.scrollWidth * article.scrollHeight)),
+      );
+      if (scale < 0.45) {
+        actionFeedback('הדוח ארוך מדי לתמונה קריאה. אפשר לשמור אותו כ־PDF.');
+        return;
+      }
       void import('html2canvas')
-        .then(({ default: render }) => render(article, { scale: 1 }))
-        .then((canvas) => {
-          const anchor = link('', canvas.toDataURL());
-          anchor.download = `car-${report.plate}.png`;
-          anchor.click();
-        })
+        .then(({ default: render }) =>
+          render(article, {
+            scale,
+            ignoreElements: (node) =>
+              node.id === 'actions' || node.classList.contains('advanced'),
+          }),
+        )
+        .then((canvas) =>
+          canvas.toBlob((blob) => {
+            if (!blob)
+              return actionFeedback('הדפדפן לא הצליח ליצור את קובץ התמונה.');
+            const objectUrl = URL.createObjectURL(blob);
+            const anchor = link('', objectUrl);
+            anchor.download = `car-${report.plate}.png`;
+            anchor.click();
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+          }),
+        )
         .catch(() => {
-          message.textContent = 'יצירת התמונה נכשלה.';
+          actionFeedback('יצירת התמונה נכשלה. אפשר לשמור את הדוח כ־PDF.');
         });
     }),
     button('JSON', () => {
@@ -182,7 +205,7 @@ function renderActions(report: Report) {
       download(`car-${report.plate}.json`, {
         ...data,
         sourceStatus,
-        schema: 1,
+        schema: 2,
       });
     }),
     button('תגובות מקור', () =>
@@ -198,6 +221,7 @@ function renderActions(report: Report) {
     compare.searchParams.set('a', report.plate);
     actions.append(link('השוואה לרכב נוסף', compare.href));
   }
+  output.querySelector('.report-summary')?.append(actions);
 }
 
 async function search(plate: string, domain: SearchDomain, navigate: boolean) {
@@ -210,6 +234,8 @@ async function search(plate: string, domain: SearchDomain, navigate: boolean) {
     history.pushState(null, '', address({ plate, domain }));
   message.textContent = 'בודק במאגרי משרד התחבורה…';
   actions.replaceChildren();
+  input.removeAttribute('aria-invalid');
+  form.classList.add('is-searching');
   const skeleton = element('div', undefined, 'panel skeleton');
   skeleton.setAttribute('aria-hidden', 'true');
   output.replaceChildren(skeleton);
@@ -231,6 +257,12 @@ async function search(plate: string, domain: SearchDomain, navigate: boolean) {
     message.textContent = result.identity ? 'הבדיקה הסתיימה.' : '';
     if (result.identity) {
       renderActions(result);
+      void import('./model-link')
+        .then(({ modelLink }) => modelLink(result, request.signal))
+        .then((anchor) => {
+          if (anchor && !request.signal.aborted) actions.append(anchor);
+        })
+        .catch(() => {});
       const entry = { plate: result.plate, domain: result.domain };
       write('myoto-recent', [
         entry,
@@ -249,10 +281,15 @@ async function search(plate: string, domain: SearchDomain, navigate: boolean) {
       }
     }
   } catch {
-    if (!request.signal.aborted)
+    if (!request.signal.aborted) {
       message.textContent = 'הבדיקה נכשלה. אפשר לנסות שוב.';
+      output.querySelector('.skeleton')?.remove();
+    }
   } finally {
-    if (!request.signal.aborted) output.removeAttribute('aria-busy');
+    if (!request.signal.aborted) {
+      output.removeAttribute('aria-busy');
+      form.classList.remove('is-searching');
+    }
   }
 }
 
@@ -272,6 +309,8 @@ const fromUrl = () => {
     actions.replaceChildren();
     message.textContent = '';
     input.value = '';
+    type.value = 'registration';
+    form.classList.remove('is-searching');
   }
 };
 
@@ -286,9 +325,11 @@ form.addEventListener('submit', (event) => {
     );
   else {
     message.textContent = 'הזינו מספר רישוי או צמ״ה בן 4 עד 8 ספרות.';
+    input.setAttribute('aria-invalid', 'true');
     input.focus();
   }
 });
+input.addEventListener('input', () => input.removeAttribute('aria-invalid'));
 addEventListener('popstate', fromUrl);
 renderSaved();
 fromUrl();
