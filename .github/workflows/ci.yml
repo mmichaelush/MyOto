@@ -19,6 +19,8 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
         id: e2e
+        env:
+          MYOTO_E2E_STATIC: '1'
       - uses: actions/upload-artifact@v4
         if: failure() && steps.e2e.outcome == 'failure'
         with:
