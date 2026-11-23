@@ -15,7 +15,7 @@ body {
   min-height: 100vh;
   background: #f2f6fb;
   color: var(--ink);
-  font-family: 'Segoe UI', Arial, sans-serif;
+  font-family: 'Heebo Variable', 'Segoe UI', Arial, sans-serif;
   line-height: 1.55;
 }
 .wrap {
