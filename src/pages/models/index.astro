@@ -1,14 +1,18 @@
 ---
 import Site from '../../layouts/Site.astro';
 import CatalogSource from '../../components/CatalogSource.astro';
-import { catalog, count, totals } from '../../data/catalog';
+import { catalog, count } from '../../data/catalog';
 const base = import.meta.env.BASE_URL + 'models/';
+const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
 ---
 
 <Site title="יצרנים ודגמים בישראל">
-  <section class="panel">
+  <section class="panel catalog-heading">
     <h1>יצרנים ודגמים בישראל</h1>
-    <p>חפשו בקטלוג הנוכחי לפי יצרן, כינוי מסחרי, שנת ייצור או רמת גימור.</p>
+    <p>
+      {count.format(modelCount)} דגמים בקטלוג משרד התחבורה. חפשו לפי יצרן, דגם,
+      שנת ייצור או רמת גימור.
+    </p>
     <label class="control">
       חיפוש בקטלוג
       <input
@@ -17,70 +21,128 @@ const base = import.meta.env.BASE_URL + 'models/';
         type="search"
         list="model-names"
         placeholder="לדוגמה: לנסר 2010"
+        autocomplete="off"
       />
     </label>
-    <datalist id="model-names">
-      {catalog.makes.flatMap((make) =>
-        make.models.map((model) => (
-          <option value={`${make.name} ${model.aliases[0] ?? model.name}`} />
-        )),
-      )}
-    </datalist>
+    <datalist id="model-names"></datalist>
     <p id="model-filter-status" role="status" class="muted"></p>
   </section>
-  {catalog.makes.map((make) => (
-    <section class="panel" data-make>
-      <h2>
-        <a href={base + make.id + '/'}>{make.name}</a>
-      </h2>
-      <div class="model-grid">
-        {make.models.map((model) => (
-          <a
-            data-model={[
-              `${make.name} ${make.id} ${model.name}`,
-              ...model.aliases,
-              ...model.records.map((row) => row.year),
-              ...model.records.flatMap((row) =>
-                row.variants.map((variant) => variant[0]),
-              ),
-            ].join(' ')}
-            class="model-card"
-            href={`${base}${make.id}/${model.id}/`}
-          >
-            <strong>
-              <bdi>{model.name}</bdi>
-            </strong>
-            <span>
-              {count.format(totals(model.records).active)} כלי רכב פעילים
-            </span>
-          </a>
-        ))}
-      </div>
-    </section>
-  ))}
+  <section class="panel" id="model-results" aria-label="תוצאות חיפוש" hidden>
+    <h2>תוצאות חיפוש</h2>
+    <div class="model-grid"></div>
+  </section>
+  <section class="panel" id="all-makes">
+    <h2>רשימת יצרנים</h2>
+    <div class="model-grid">
+      {catalog.makes.map((make) => (
+        <a class="model-card" href={base + make.id + '/'}>
+          <strong>
+            <bdi>{make.name}</bdi>
+          </strong>
+          <span>{count.format(make.models.length)} דגמים</span>
+        </a>
+      ))}
+    </div>
+  </section>
   <CatalogSource />
 </Site>
 <script>
-  const filter = document.querySelector<HTMLInputElement>('#model-filter')!;
-  const groups = document.querySelectorAll<HTMLElement>('[data-make]');
+  import { element, link } from '../../ui/dom';
+  import type { CatalogSearchItem } from '../../pages/models/search-index.json';
+  const input = document.querySelector<HTMLInputElement>('#model-filter')!;
   const status = document.querySelector<HTMLElement>('#model-filter-status')!;
-  filter.addEventListener('input', () => {
-    const terms = filter.value
-      .toLowerCase()
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-    let total = 0;
-    for (const group of groups) {
-      let matches = 0;
-      for (const card of group.querySelectorAll<HTMLElement>('[data-model]')) {
-        const searchable = card.dataset.model?.toLowerCase() ?? '';
-        card.hidden = !terms.every((term) => searchable.includes(term));
-        if (!card.hidden) matches++;
-      }
-      group.hidden = matches === 0;
-      total += matches;
+  const makes = document.querySelector<HTMLElement>('#all-makes')!;
+  const section = document.querySelector<HTMLElement>('#model-results')!;
+  const grid = section.querySelector('.model-grid')!;
+  const suggestions =
+    document.querySelector<HTMLDataListElement>('#model-names')!;
+  const base = import.meta.env.BASE_URL + 'models/';
+  let index: Promise<CatalogSearchItem[]> | undefined;
+  let current = 0;
+  const normalize = (value: string) =>
+    value.normalize('NFKC').toLowerCase().replace(/[-–—]/g, ' ');
+  const count = new Intl.NumberFormat('he-IL');
+
+  async function search() {
+    const id = ++current;
+    const terms = normalize(input.value).trim().split(/\s+/).filter(Boolean);
+    const requestedYear = terms.find((term) => /^(?:19|20)\d{2}$/.test(term));
+    if (!terms.length) {
+      makes.hidden = false;
+      section.hidden = true;
+      status.textContent = '';
+      suggestions.replaceChildren();
+      return;
     }
-    status.textContent = terms.length ? `${total} דגמים בקטלוג` : '';
+    status.textContent = 'טוען תוצאות…';
+    index ??= fetch(base + 'search-index.json')
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Catalog index unavailable');
+        return (await response.json()) as CatalogSearchItem[];
+      })
+      .catch((error) => {
+        index = undefined;
+        throw error;
+      });
+    try {
+      const list = await index;
+      if (id !== current) return;
+      const matches = list.filter(({ search }) =>
+        terms.every((term) => search.includes(term)),
+      );
+      const shown = matches.slice(0, 36);
+      grid.replaceChildren(
+        ...shown.map((entry) => {
+          const year =
+            requestedYear && entry.years.includes(Number(requestedYear))
+              ? requestedYear + '/'
+              : '';
+          const card = link('', base + entry.path + '/' + year);
+          card.className = 'model-card';
+          card.dataset.model = '';
+          const label = element('strong');
+          label.append(
+            element('bdi', entry.name + (year ? ' ' + requestedYear : '')),
+          );
+          card.append(label, element('span', entry.make));
+          return card;
+        }),
+      );
+      suggestions.replaceChildren(
+        ...shown.slice(0, 8).map((entry) => {
+          const item = element('option');
+          const year =
+            requestedYear && entry.years.includes(Number(requestedYear))
+              ? ' ' + requestedYear
+              : '';
+          item.value = entry.make + ' ' + entry.name + year;
+          return item;
+        }),
+      );
+      makes.hidden = true;
+      section.hidden = !shown.length;
+      status.textContent = !matches.length
+        ? 'לא נמצאו דגמים. נסו שם יצרן או כינוי אחר.'
+        : shown.length < matches.length
+          ? `${count.format(matches.length)} דגמים. מוצגות ${shown.length} תוצאות.`
+          : `${count.format(matches.length)} דגמים בקטלוג`;
+    } catch {
+      if (id !== current) return;
+      section.hidden = true;
+      makes.hidden = false;
+      status.textContent =
+        'החיפוש אינו זמין כרגע. אפשר לפתוח דגם דרך רשימת היצרנים.';
+    }
+  }
+  input.addEventListener('input', () => {
+    void search();
   });
+  input.addEventListener('search', () => {
+    void search();
+  });
+  const query = new URLSearchParams(location.search).get('q');
+  if (query) {
+    input.value = query;
+    void search();
+  }
 </script>

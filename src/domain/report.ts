@@ -1,11 +1,14 @@
 import {
-  identityConflict,
+  engineMatch,
+  identityMatch,
+  privateContinuation,
   primary,
   resources,
   statuses,
   type SourceId,
 } from '../data/sources';
 import type { Reply, Row, Scalar } from '../data/types';
+import { dateOrder } from './format';
 import type { SearchDomain } from './plate';
 
 export type SourceReplies = Partial<Record<SourceId, Reply>>;
@@ -30,6 +33,9 @@ export type Report = {
   complete: boolean;
   identity?: SourceId;
   separated: SourceId[];
+  unverified: SourceId[];
+  statusCoverage: 'complete' | 'partial' | 'pending' | 'not-applicable';
+  historyByPlate: boolean;
   fields: Record<string, Field>;
   sources: SourceReplies;
   status: 'listed' | 'inactive' | 'cancelled' | 'conflicting' | 'unknown';
@@ -38,13 +44,37 @@ export type Report = {
   recalls: Row[];
 };
 
-const aliases: Record<string, string> = {
-  production_country: 'tozeret_eretz_nm',
-  nefah_manoa: 'nefach_manoa',
-  SeatsNum: 'mispar_moshavim',
-  delek_nm: 'sug_delek_nm',
-};
-const supplementary = ['private_cars_2', 'history_1', 'filters'] as const;
+const observations = ['private_cars_2', 'history_1'] as const;
+const active = new Set<SourceId>([
+  'private_cars_1',
+  'publicTransport',
+  'twoWheeled',
+  'heavy',
+]);
+const archived = new Set<SourceId>(statuses);
+
+function fieldPriority(
+  field: string,
+  source: SourceId,
+  identity: SourceId | undefined,
+) {
+  if (field === 'bitul_dt' || field === 'taarich_bitzul')
+    return archived.has(source) ? 0 : 4;
+  if (field === 'kilometer_test_aharon') return source === 'history_1' ? 0 : 4;
+  if (
+    field === 'tokef_dt' ||
+    field === 'mivchan_acharon_dt' ||
+    field === 'baalut'
+  ) {
+    return active.has(source) ? (source === identity ? 0 : 1) : 4;
+  }
+  if (source === identity) return 0;
+  return active.has(source)
+    ? 1
+    : archived.has(source) || source === 'personalImport'
+      ? 2
+      : 3;
+}
 
 export function rowKey(row: Row): string {
   return JSON.stringify(
@@ -75,43 +105,85 @@ export function buildReport(
   sources: SourceReplies,
   complete: boolean,
 ): Report {
-  const available = primary.filter((key) => sources[key]?.rows.length);
+  const available = primary.filter(
+    (key) =>
+      (key === 'cme') === (domain === 'equipment') && sources[key]?.rows.length,
+  );
   const identity = available[0];
   const base = identity ? sources[identity]?.rows[0] : undefined;
-  const separated = base
-    ? available.filter(
-        (key) =>
-          key !== identity &&
-          sources[key]?.rows.some((row) => identityConflict(base, row)),
-      )
-    : [];
-  const statusSources = available.filter((key) =>
-    statuses.some((status) => status === key),
-  );
-  const listed = available.some(
-    (key) =>
-      !statusSources.includes(key) && key !== 'cme' && key !== 'personalImport',
+  const separated = new Set<SourceId>();
+  const unverified = new Set<SourceId>();
+  const accepted = new Map<SourceId, Row[]>();
+  if (base) {
+    for (const key of available) {
+      for (const row of uniqueRows(sources[key]?.rows ?? [])) {
+        const match =
+          key === identity && rowKey(base) === rowKey(row)
+            ? 'verified'
+            : identityMatch(base, row);
+        if (match === 'different') separated.add(key);
+        else if (match !== 'verified') unverified.add(key);
+        else accepted.set(key, [...(accepted.get(key) ?? []), row]);
+      }
+    }
+    if (
+      identity === 'private_cars_1' &&
+      !separated.has(identity) &&
+      !unverified.has(identity)
+    ) {
+      for (const key of observations) {
+        const rows = uniqueRows(sources[key]?.rows ?? []);
+        const compatible = rows.filter((row) =>
+          key === 'private_cars_2'
+            ? privateContinuation(base, row)
+            : engineMatch(base, row),
+        );
+        if (compatible.length === 1) accepted.set(key, compatible);
+        if (rows.length !== compatible.length || compatible.length > 1)
+          unverified.add(key);
+      }
+    }
+  }
+  const keys = [...accepted.keys()];
+  const listed = keys.some((key) => active.has(key));
+  const cancelled = keys.some((key) => key.startsWith('offRoad'));
+  const inactive = keys.some((key) => key.startsWith('frozen'));
+  const statusCoverage =
+    domain === 'equipment'
+      ? 'not-applicable'
+      : [...active, ...statuses].some((key) => sources[key]?.issue)
+        ? 'partial'
+        : [...active, ...statuses].every((key) => sources[key])
+          ? 'complete'
+          : complete
+            ? 'partial'
+            : 'pending';
+  const uncertainStatus = [...unverified].some(
+    (key) => active.has(key) || archived.has(key),
   );
   const status =
-    listed && statusSources.length
+    listed && (cancelled || inactive)
       ? 'conflicting'
-      : statusSources.some((key) => key.startsWith('offRoad'))
-        ? 'cancelled'
-        : statusSources.length
-          ? 'inactive'
-          : listed
-            ? 'listed'
-            : 'unknown';
+      : statusCoverage !== 'complete' ||
+          uncertainStatus ||
+          (identity && separated.has(identity))
+        ? 'unknown'
+        : cancelled
+          ? 'cancelled'
+          : inactive
+            ? 'inactive'
+            : listed
+              ? 'listed'
+              : 'unknown';
   const fields: Record<string, Field> = Object.create(null);
   if (base) {
-    for (const key of [...available, ...supplementary]) {
+    for (const [key, rows] of accepted) {
       const source = sources[key];
       if (!source) continue;
-      for (const row of uniqueRows(source.rows)) {
-        if (identityConflict(base, row)) continue;
+      for (const row of rows) {
         for (const [name, raw] of Object.entries(row)) {
           if (name === '_id') continue;
-          const field = Object.hasOwn(aliases, name) ? aliases[name] : name;
+          const field = name;
           const value = normalized(field, raw);
           if (value === null || value === '') continue;
           const observation: Observation = {
@@ -134,9 +206,15 @@ export function buildReport(
               conflicting: false,
             };
           else {
-            current.alternatives.push(observation);
             current.conflicting ||=
               String(current.chosen.value) !== String(value);
+            if (
+              fieldPriority(field, key, identity) <
+              fieldPriority(field, current.chosen.source, identity)
+            ) {
+              current.alternatives.push(current.chosen);
+              current.chosen = observation;
+            } else current.alternatives.push(observation);
           }
         }
       }
@@ -144,14 +222,20 @@ export function buildReport(
   }
   const partial = Object.values(sources).some((reply) => reply.issue);
   const newest = (field: string) => (a: Row, b: Row) =>
-    String(b[field] ?? '').localeCompare(String(a[field] ?? ''));
+    dateOrder(b[field]) - dateOrder(a[field]);
   return {
     plate,
     domain,
     complete,
     sources: { ...sources },
     identity,
-    separated,
+    separated: [...separated],
+    unverified: [...unverified],
+    statusCoverage,
+    historyByPlate: Boolean(
+      sources.history_2?.rows.length ||
+      (sources.history_1?.rows.length && !accepted.has('history_1')),
+    ),
     fields,
     status,
     outcome: identity

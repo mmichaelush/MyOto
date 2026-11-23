@@ -1,6 +1,6 @@
-import { CkanClient } from './ckan';
+import { CkanClient, RequestBudget } from './ckan';
 import {
-  identityConflict,
+  identityMatch,
   modelFilter,
   modelSources,
   plateFilter,
@@ -21,6 +21,7 @@ const regular = [
   'twoWheeled',
   ...statuses,
 ] as const;
+export const registrationRequestBudget = 28;
 
 export class VehicleEngine {
   constructor(private readonly client = new CkanClient()) {}
@@ -35,14 +36,30 @@ export class VehicleEngine {
     if (!plate)
       throw new RangeError('Invalid registration or equipment number');
     const sources: SourceReplies = {};
-    const publish = () => update?.(buildReport(plate, domain, sources, false));
+    const budget = new RequestBudget(
+      domain === 'equipment' ? 6 : registrationRequestBudget,
+    );
+    let published = false;
+    const publish = () => {
+      if (!update || published || signal.aborted) return;
+      const preview = buildReport(plate, domain, sources, false);
+      if (
+        preview.identity &&
+        !statuses.some((key) => key === preview.identity)
+      ) {
+        published = true;
+        update(preview);
+      }
+    };
     const query = async (key: SourceId, filter = plateFilter(key, plate)) => {
       sources[key] = await this.client.lookup(
         resources[key],
         filter,
         signal,
         ttl(key),
+        budget,
       );
+      signal.throwIfAborted();
       publish();
     };
     if (domain === 'equipment') {
@@ -54,16 +71,19 @@ export class VehicleEngine {
         ? sources[discovery.identity]?.rows[0]
         : undefined;
       if (base) {
-        const compatible = (key: SourceId) =>
-          sources[key]?.rows.some((row) => !identityConflict(base, row));
+        const isType = (key: SourceId) =>
+          discovery.identity === key ||
+          sources[key]?.rows.some(
+            (row) => identityMatch(base, row) === 'verified',
+          );
         const lookups: Promise<void>[] = [
           query('recall'),
           query('disabledPermit'),
         ];
         if (
-          compatible('private_cars_1') ||
-          compatible('frozen_with_model') ||
-          compatible('offRoad_1')
+          isType('private_cars_1') ||
+          isType('frozen_with_model') ||
+          isType('offRoad_1')
         ) {
           lookups.push(
             query('history_1'),
@@ -71,21 +91,22 @@ export class VehicleEngine {
             query('safetyDiscount'),
           );
         }
-        if (compatible('private_cars_1')) lookups.push(query('private_cars_2'));
+        if (isType('private_cars_1')) lookups.push(query('private_cars_2'));
         if (
-          compatible('publicTransport') &&
+          isType('publicTransport') &&
           sources.publicTransport?.rows.some((row) =>
             /^אוטובוס/.test(String(row.sug_rechev_nm ?? '')),
           )
         ) {
           lookups.push(query('busFleet'));
         }
-        if (compatible('heavy') || compatible('publicTransport'))
+        if (isType('heavy') || isType('publicTransport'))
           lookups.push(query('anchors'));
         if (
-          compatible('heavy') ||
-          compatible('publicTransport') ||
-          compatible('private_cars_1')
+          isType('heavy') ||
+          isType('publicTransport') ||
+          (isType('private_cars_1') &&
+            /דיזל/.test(String(base.sug_delek_nm ?? '')))
         )
           lookups.push(query('filters'));
         const filters = modelFilter(base);
