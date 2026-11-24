@@ -1,0 +1,152 @@
+{
+  "private_cars_1": {
+    "id": "053cea08-09bc-40ec-8f7a-156f0677aff3",
+    "label": "מאגר מספרי רישוי של כלי רכב",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/private-and-commercial-vehicles/053cea08-09bc-40ec-8f7a-156f0677aff3"
+  },
+  "private_cars_2": {
+    "id": "0866573c-40cd-4ca8-91d2-9dd2d7a492e5",
+    "label": "מספרי רישוי של כלי רכב פרטיים ומסחריים - המשך",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/private-and-commercial-vehicles/0866573c-40cd-4ca8-91d2-9dd2d7a492e5"
+  },
+  "personalImport": {
+    "id": "03adc637-b6fe-402b-9937-7c3d3afc9140",
+    "label": "כלי רכב ביבוא אישי",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/personal_import_vehicles/03adc637-b6fe-402b-9937-7c3d3afc9140"
+  },
+  "offRoad_1": {
+    "id": "851ecab1-0622-4dbe-a6c7-f950cf82abf9",
+    "label": "כלי רכב שירדו מהכביש ובסטטוס ביטול סופי",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/reshev_bitul_sofi/851ecab1-0622-4dbe-a6c7-f950cf82abf9"
+  },
+  "offRoad_2": {
+    "id": "ec8cbc34-72e1-4b69-9c48-22821ba0bd6c",
+    "label": "כלי רכב שירדו מהכביש ובסטטוס ביטול סופי 2000-2009",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/reshev_bitul_sofi/ec8cbc34-72e1-4b69-9c48-22821ba0bd6c"
+  },
+  "offRoad_3": {
+    "id": "4e6b9724-4c1e-43f0-909a-154d4cc4e046",
+    "label": "כלי רכב שירדו מהכביש ובסטטוס ביטול סופי 2010-2016",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/reshev_bitul_sofi/4e6b9724-4c1e-43f0-909a-154d4cc4e046"
+  },
+  "frozen_with_model": {
+    "id": "f6efe89a-fb3d-43a4-bb61-9bf12a9b9099",
+    "label": "מספרי רישוי של כלי רכב לא פעילים עם קוד דגם",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/rechev_le_pail_with_degem/f6efe89a-fb3d-43a4-bb61-9bf12a9b9099"
+  },
+  "frozen_no_model": {
+    "id": "6f6acd03-f351-4a8f-8ecf-df792f4f573a",
+    "label": "מספרי רישוי של כלי רכב לא פעילים וחסרי קוד דגם",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/rechev_le_pail_without-degem/6f6acd03-f351-4a8f-8ecf-df792f4f573a"
+  },
+  "heavy": {
+    "id": "cd3acc5c-03c3-4c89-9c54-d40f93c0d790",
+    "label": "מאגר כלי רכב מעל 3 וחצי טון וכלי רכב חסרי קוד דגם",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/heavy-truck/cd3acc5c-03c3-4c89-9c54-d40f93c0d790"
+  },
+  "cme": {
+    "id": "58dc4654-16b1-42ed-8170-98fadec153ea",
+    "label": "כלי צמ\"ה (ציוד מכני הנדסי)",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/construction_equipment/58dc4654-16b1-42ed-8170-98fadec153ea"
+  },
+  "twoWheeled": {
+    "id": "bf9df4e2-d90d-4c0a-a400-19e15af8e95f",
+    "label": "מספרי רישוי של כלי רכב דו גלגליים",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/motorcycle/bf9df4e2-d90d-4c0a-a400-19e15af8e95f"
+  },
+  "publicTransport": {
+    "id": "cf29862d-ca25-4691-84f6-1be60dcb4a1e",
+    "label": "קובץ מספרי רישוי של כלי הרכב הציבוריים הפעילים",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/kli_rechev_ciburiim/cf29862d-ca25-4691-84f6-1be60dcb4a1e"
+  },
+  "history_1": {
+    "id": "56063a99-8a3e-4ff4-912e-5966c0279bad",
+    "label": "היסטוריית כלי רכב פרטיים (1)",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/shinui_mivne/56063a99-8a3e-4ff4-912e-5966c0279bad"
+  },
+  "history_2": {
+    "id": "bb2355dc-9ec7-4f06-9c3f-3344672171da",
+    "label": "היסטוריית כלי רכב פרטיים (2)",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/shinui_mivne/bb2355dc-9ec7-4f06-9c3f-3344672171da"
+  },
+  "modelDetails": {
+    "id": "142afde2-6228-49f9-8a29-9b6c3a0cbe40",
+    "label": "תוצרים ודגמים של כלי רכב WLTP",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/degem-rechev-wltp/142afde2-6228-49f9-8a29-9b6c3a0cbe40"
+  },
+  "modelCounts": {
+    "id": "5e87a7a1-2f6f-41c1-8aec-7216d52a6cf6",
+    "label": "מאגר כמויות כלי רכב לפי תוצר, דגם ושנת יצור",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/degem-rechev-wltp/5e87a7a1-2f6f-41c1-8aec-7216d52a6cf6"
+  },
+  "recall": {
+    "id": "36bf1404-0be4-49d2-82dc-2f1ead4a8b93",
+    "label": "כלי רכב שלא ביצעו ריקול (קריאת שירות)",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/hagbalat_recall/36bf1404-0be4-49d2-82dc-2f1ead4a8b93"
+  },
+  "importers": {
+    "id": "39f455bf-6db0-4926-859d-017f34eacbcb",
+    "label": "יבואנים ומחירוני רכב חדש",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/mehir_yevuan/39f455bf-6db0-4926-859d-017f34eacbcb"
+  },
+  "disabledPermit": {
+    "id": "c8b9f9c8-4612-4068-934f-d4acd2e3c06e",
+    "label": "כלי רכב עם תג חניה לנכה",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/rechev-tag-nachim/c8b9f9c8-4612-4068-934f-d4acd2e3c06e"
+  },
+  "filters": {
+    "id": "7cb2bd95-bf2e-49b6-aea1-fcb5ff6f0473",
+    "label": "כלי רכב שמותקנים בהם מסננים לצמצום פליטת מזהמים",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/vehicles_filters_reduce_emissions/7cb2bd95-bf2e-49b6-aea1-fcb5ff6f0473"
+  },
+  "safetyDiscount": {
+    "id": "83bfb278-7be1-4dab-ae2d-40125a923da1",
+    "label": "רכבים זכאים להנחה לאחר התקנת מערכות בטיחות",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/zakaut-hatkana/83bfb278-7be1-4dab-ae2d-40125a923da1"
+  },
+  "busFleet": {
+    "id": "91d298ed-a260-4f93-9d50-d5e3c5b82ce1",
+    "label": "ציי רכב אוטובוסים",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/bus_fleet/91d298ed-a260-4f93-9d50-d5e3c5b82ce1"
+  },
+  "anchors": {
+    "id": "786b33b5-75c4-42a3-a241-b1af3c9ca487",
+    "label": "מאגר כלי רכב המחויבים בהתקנת נקודות עיגון לאבטחת מטענים",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/hatkana_nekudat_igun/786b33b5-75c4-42a3-a241-b1af3c9ca487"
+  },
+  "makers": {
+    "id": "d00812f4-58c5-4ce8-b16c-ac13ae52f9d8",
+    "label": "קובץ תוצרים של כלי הרכב הפעילים",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/tozeret/d00812f4-58c5-4ce8-b16c-ac13ae52f9d8"
+  },
+  "campaigns": {
+    "id": "2c33523f-87aa-44ec-a736-edbb0a82975e",
+    "label": "Recall",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/recall/2c33523f-87aa-44ec-a736-edbb0a82975e"
+  },
+  "monthly": {
+    "id": "602ac32d-19c0-4b41-88e0-e3ce8a7e80b7",
+    "label": "כמות סגירות חודשי עבור רכבים חדשים בעלי קוד דגם",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/amount_monthly_closures_vehicles/602ac32d-19c0-4b41-88e0-e3ce8a7e80b7"
+  },
+  "monthlyNoModel": {
+    "id": "c967097c-3c74-4adf-a732-0fdd2fda56d9",
+    "label": "מאגר כמות כלי רכב חדשים חסרי קוד דגם",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/kamut_sgirot_hodshi_rechev_blikoddegem/c967097c-3c74-4adf-a732-0fdd2fda56d9"
+  },
+  "electric": {
+    "id": "07421a4e-5b12-4444-9173-5ca297b31f79",
+    "label": "מאגר כמויות כלי רכב חשמליים לפי נפה",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/rechavim_hashmalim/07421a4e-5b12-4444-9173-5ca297b31f79"
+  },
+  "garages": {
+    "id": "bb68386a-a331-4bbc-b668-bba2766d517d",
+    "label": "מוסכים ומכוני רישוי",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/musachim/bb68386a-a331-4bbc-b668-bba2766d517d"
+  },
+  "dealers": {
+    "id": "eb74ad8c-ffcd-43bb-949c-2244fc8a8651",
+    "label": "סוחרי רכב",
+    "url": "https://data.gov.il/he/datasets/ministry_of_transport/socharim/eb74ad8c-ffcd-43bb-949c-2244fc8a8651"
+  }
+}
