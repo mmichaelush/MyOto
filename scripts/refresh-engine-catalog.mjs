@@ -32,6 +32,7 @@ const fields = [
 ];
 const target = 24000;
 const full = process.argv.includes('--full');
+const serial = process.argv.includes('--serial');
 const pageSize = 10000;
 
 async function read(action, search) {
@@ -119,9 +120,9 @@ function allPages(population) {
 }
 async function* scan(resource, columns, windows) {
   let lastId = -1;
-  const concurrency = full ? 4 : 1;
+  const concurrency = full && !serial ? 4 : 1;
   for (let index = 0; index < windows.length; index += concurrency) {
-    if (index) await setTimeout(800);
+    if (index) await setTimeout(serial ? 1500 : 800);
     const pages = await Promise.all(
       windows
         .slice(index, index + concurrency)

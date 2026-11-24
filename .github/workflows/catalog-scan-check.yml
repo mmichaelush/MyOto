@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: node scripts/refresh-engine-catalog.mjs --full
+      - run: node scripts/refresh-engine-catalog.mjs --full --serial
       - name: Verify full registry coverage
         run: |
           node --input-type=module -e '
