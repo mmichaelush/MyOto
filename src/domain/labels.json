@@ -156,6 +156,11 @@
     "category": "רישוי ובעלות",
     "format": "date"
   },
+  "bitul_dt": {
+    "label": "מועד ביטול הרישום",
+    "category": "רישוי ובעלות",
+    "format": "date"
+  },
   "mkoriut_nm": {
     "label": "בעלות ראשונית",
     "category": "כללי וזיהוי"

@@ -10,6 +10,7 @@ const output = new URL('../src/data/catalog.json', import.meta.url);
 const cache = new URL('../.astro/catalog-cache/', import.meta.url);
 const endpoint = 'https://data.gov.il/api/3/action/';
 const limit = 5000;
+const catalogSchema = 2;
 const keyFields = ['sug_degem', 'tozeret_cd', 'degem_cd', 'shnat_yitzur'];
 const projections = {
   modelCounts: [
@@ -27,6 +28,14 @@ const projections = {
     'delek_nm',
     'nefah_manoa',
     'automatic_ind',
+    'hanaa_nm',
+    'technologiat_hanaa_nm',
+    'koah_sus',
+    'mispar_moshavim',
+    'kosher_grira_im_blamim',
+    'kosher_grira_bli_blamim',
+    'kvutzat_zihum',
+    'ramat_eivzur_betihuty',
   ],
 };
 // Aliases are for navigation. Both discovery and counts come from the registry.
@@ -92,6 +101,18 @@ async function metadata() {
 }
 
 const generation = await metadata();
+if (process.argv.includes('--skip-unchanged')) {
+  const existing = await read(output).catch((error) => {
+    if (error.code !== 'ENOENT') throw error;
+  });
+  if (
+    existing?.catalogSchema === catalogSchema &&
+    JSON.stringify(existing.generation) === JSON.stringify(generation)
+  ) {
+    console.log('Catalog source revisions are unchanged');
+    process.exit(0);
+  }
+}
 await mkdir(cache, { recursive: true });
 const marker = new URL('generation.json', cache);
 const old = await read(marker).catch((error) => {
@@ -113,6 +134,11 @@ await mkdir(checkpoint, { recursive: true });
 
 async function* scan(name) {
   const fields = projections[name];
+  const valid = (page) =>
+    Array.isArray(page?.records) &&
+    page.records.every((row) =>
+      fields.every((field) => Object.hasOwn(row, field)),
+    );
   for (let offset = 0; offset <= 150000;) {
     const filename = `${name}-${offset}.json`;
     const file = new URL(filename, checkpoint);
@@ -123,7 +149,7 @@ async function* scan(name) {
       page = await read(new URL(filename, cache)).catch((error) => {
         if (error.code !== 'ENOENT') throw error;
       });
-    if (!page) {
+    if (!valid(page)) {
       page = await fetchResult('datastore_search', {
         resource_id: resources[name].id,
         fields: fields.join(','),
@@ -134,12 +160,7 @@ async function* scan(name) {
       });
       await setTimeout(800);
     }
-    if (
-      !Array.isArray(page.records) ||
-      page.records.some((row) =>
-        fields.some((field) => !Object.hasOwn(row, field)),
-      )
-    )
+    if (!valid(page))
       throw new Error(`Schema mismatch: ${name} offset ${offset}`);
     const temporary = new URL(filename + '.tmp', checkpoint);
     await writeFile(
@@ -174,11 +195,26 @@ const specs = new Map();
 for await (const row of scan('modelDetails')) {
   const id = key(row);
   const variants = specs.get(id) ?? new Map();
+  const extra = Object.fromEntries(
+    Object.entries({
+      drive: clean(row.hanaa_nm),
+      propulsion: clean(row.technologiat_hanaa_nm),
+      power: row.koah_sus,
+      seats: row.mispar_moshavim,
+      towBraked: row.kosher_grira_im_blamim,
+      towUnbraked: row.kosher_grira_bli_blamim,
+      pollution: row.kvutzat_zihum,
+      safety: row.ramat_eivzur_betihuty,
+    }).filter(
+      ([, value]) => value !== undefined && value !== null && value !== '',
+    ),
+  );
   const value = [
     clean(row.ramat_gimur) || null,
     clean(row.delek_nm) || null,
     row.nefah_manoa,
     row.automatic_ind,
+    ...(Object.keys(extra).length ? [extra] : []),
   ];
   variants.set(JSON.stringify(value), value);
   specs.set(id, variants);
@@ -249,6 +285,7 @@ if (seen.size < 90000 || makes.size < 100)
 if (JSON.stringify(await metadata()) !== JSON.stringify(generation))
   throw new Error('Source changed during the refresh');
 const snapshot = {
+  catalogSchema,
   fetchedAt: new Date().toISOString(),
   updatedAt: generation.modelCounts,
   generation,

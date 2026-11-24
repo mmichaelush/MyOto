@@ -2,8 +2,22 @@
 import Site from '../../layouts/Site.astro';
 import CatalogSource from '../../components/CatalogSource.astro';
 import { catalog, count } from '../../data/catalog';
+import { cohorts } from '../../data/cohorts';
+import '../../styles/catalog.css';
 const base = import.meta.env.BASE_URL + 'models/';
 const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
+const ownershipTypes = [
+  ...new Set(
+    Object.values(cohorts).flatMap(
+      (cohort) =>
+        cohort?.ownership.flatMap(([label, occurrences]) =>
+          occurrences >= 5 && label !== 'לא ידוע' && label !== 'קטגוריות נוספות'
+            ? [label]
+            : [],
+        ) ?? [],
+    ),
+  ),
+].sort((a, b) => a.localeCompare(b, 'he'));
 ---
 
 <Site title="יצרנים ודגמים בישראל">
@@ -45,10 +59,42 @@ const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
         />
       </label>
     </div>
+    <details class="catalog-facets">
+      <summary>סינון לפי גימור ובעלות</summary>
+      <div class="catalog-filters">
+        <label class="control">
+          רמת גימור
+          <input
+            id="catalog-trim"
+            class="text-input"
+            placeholder="שם גימור מדויק"
+            autocomplete="off"
+          />
+        </label>
+        <label class="control">
+          בעלות במדגם
+          <select id="catalog-ownership">
+            <option value="">כל סוגי הבעלות</option>
+            {ownershipTypes.map((label) => (
+              <option value={label}>{label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <small class="muted">
+        בעלות מוצגת לפי המדגמים הזמינים. בחירה גם בגימור מחפשת שילוב שנצפה
+        במדגם.
+      </small>
+    </details>
     <datalist id="model-names"></datalist>
     <p id="model-filter-status" role="status" class="muted"></p>
   </section>
-  <section class="panel" id="model-results" aria-label="תוצאות חיפוש" hidden>
+  <section
+    class="panel catalog-directory"
+    id="model-results"
+    aria-label="תוצאות חיפוש"
+    hidden
+  >
     <div class="catalog-results-heading">
       <h2>תוצאות חיפוש</h2>
       <button class="secondary" id="catalog-reset" type="button">
@@ -57,7 +103,7 @@ const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
     </div>
     <div class="model-grid"></div>
   </section>
-  <section class="panel" id="all-makes">
+  <section class="panel catalog-directory" id="all-makes">
     <h2>רשימת יצרנים</h2>
     <div class="model-grid">
       {catalog.makes.map((make) => (
@@ -75,14 +121,19 @@ const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
 <script>
   import { element, link } from '../../ui/dom';
   import {
+    catalogResultYear,
     normalizeCatalogTerm,
     rankCatalog,
+    type CatalogFacetIndex,
     type CatalogSearchItem,
   } from '../../presentation/catalog-search';
   const input = document.querySelector<HTMLInputElement>('#model-filter')!;
   const status = document.querySelector<HTMLElement>('#model-filter-status')!;
   const make = document.querySelector<HTMLSelectElement>('#catalog-make')!;
   const yearInput = document.querySelector<HTMLInputElement>('#catalog-year')!;
+  const trim = document.querySelector<HTMLInputElement>('#catalog-trim')!;
+  const ownership =
+    document.querySelector<HTMLSelectElement>('#catalog-ownership')!;
   const makes = document.querySelector<HTMLElement>('#all-makes')!;
   const section = document.querySelector<HTMLElement>('#model-results')!;
   const grid = section.querySelector('.model-grid')!;
@@ -90,8 +141,14 @@ const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
     document.querySelector<HTMLDataListElement>('#model-names')!;
   const base = import.meta.env.BASE_URL + 'models/';
   let index: Promise<CatalogSearchItem[]> | undefined;
+  let facetIndex: Promise<CatalogFacetIndex> | undefined;
   let current = 0;
   const count = new Intl.NumberFormat('he-IL');
+  async function loadIndex<T>(path: string): Promise<T> {
+    const response = await fetch(base + path);
+    if (!response.ok) throw new Error('Catalog index unavailable');
+    return (await response.json()) as T;
+  }
 
   async function search() {
     const id = ++current;
@@ -101,7 +158,13 @@ const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
       ? yearInput.value.trim()
       : inlineYear;
     const query = terms.filter((term) => term !== inlineYear).join(' ');
-    if (!query && !requestedYear && !make.value) {
+    if (
+      !query &&
+      !requestedYear &&
+      !make.value &&
+      !trim.value.trim() &&
+      !ownership.value
+    ) {
       makes.hidden = false;
       section.hidden = true;
       status.textContent = '';
@@ -109,38 +172,50 @@ const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
       return;
     }
     status.textContent = 'טוען תוצאות…';
-    index ??= fetch(base + 'search-index.json')
-      .then(async (response) => {
-        if (!response.ok) throw new Error('Catalog index unavailable');
-        return (await response.json()) as CatalogSearchItem[];
-      })
-      .catch((error) => {
+    index ??= loadIndex<CatalogSearchItem[]>('search-index.json').catch(
+      (error) => {
         index = undefined;
         throw error;
-      });
+      },
+    );
+    const selectedTrim = trim.value.trim();
+    const selectedOwnership = ownership.value;
+    const facetData =
+      selectedTrim || selectedOwnership
+        ? (facetIndex ??= loadIndex<CatalogFacetIndex>('facets.json').catch(
+            (error) => {
+              facetIndex = undefined;
+              throw error;
+            },
+          ))
+        : undefined;
     try {
-      const list = await index;
+      const [list, data] = await Promise.all([index, facetData]);
       if (id !== current) return;
+      const filters = {
+        trim: selectedTrim,
+        ownership: selectedOwnership,
+        index: data,
+      };
       const matches = rankCatalog(
         list,
         query,
         make.value,
         requestedYear ? Number(requestedYear) : undefined,
+        filters,
       );
       const shown = matches.slice(0, 36);
       grid.replaceChildren(
         ...shown.map((entry) => {
-          const year =
-            requestedYear && entry.years.includes(Number(requestedYear))
-              ? requestedYear + '/'
-              : '';
-          const card = link('', base + entry.path + '/' + year);
+          const year = requestedYear ?? catalogResultYear(entry, filters);
+          const card = link(
+            '',
+            base + entry.path + '/' + (year ? year + '/' : ''),
+          );
           card.className = 'model-card';
           card.dataset.model = '';
           const label = element('strong');
-          label.append(
-            element('bdi', entry.name + (year ? ' ' + requestedYear : '')),
-          );
+          label.append(element('bdi', entry.name + (year ? ' ' + year : '')));
           card.append(label, element('span', entry.make));
           return card;
         }),
@@ -159,7 +234,9 @@ const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
       makes.hidden = true;
       section.hidden = false;
       status.textContent = !matches.length
-        ? 'לא נמצאו דגמים. נסו שם יצרן או כינוי אחר.'
+        ? selectedOwnership
+          ? 'לא נמצאה התאמה במדגמי הבעלות הזמינים.'
+          : 'לא נמצאו דגמים. אפשר לשנות את החיפוש או את המסננים.'
         : shown.length < matches.length
           ? `${count.format(matches.length)} דגמים. מוצגות ${shown.length} תוצאות.`
           : `${count.format(matches.length)} דגמים בקטלוג`;
@@ -183,10 +260,18 @@ const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
   yearInput.addEventListener('input', () => {
     void search();
   });
+  trim.addEventListener('input', () => {
+    void search();
+  });
+  ownership.addEventListener('change', () => {
+    void search();
+  });
   document.querySelector('#catalog-reset')?.addEventListener('click', () => {
     input.value = '';
     make.value = '';
     yearInput.value = '';
+    trim.value = '';
+    ownership.value = '';
     input.focus();
     void search();
   });

@@ -53,7 +53,7 @@ const active = new Set<SourceId>([
 ]);
 const archived = new Set<SourceId>(statuses);
 
-function fieldPriority(
+export function fieldPriority(
   field: string,
   source: SourceId,
   identity: SourceId | undefined,
@@ -142,6 +142,9 @@ export function buildReport(
         if (rows.length !== compatible.length || compatible.length > 1)
           unverified.add(key);
       }
+    }
+    for (const key of observations) {
+      if (sources[key]?.rows.length && !accepted.has(key)) unverified.add(key);
     }
   }
   const keys = [...accepted.keys()];

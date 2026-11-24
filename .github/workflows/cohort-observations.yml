@@ -1,0 +1,53 @@
+name: Refresh vehicle cohort statistics
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '25 4 18 * *'
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: cohort-observations
+  cancel-in-progress: false
+jobs:
+  sample:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/refresh-cohorts.mjs --all-cohorts
+      - run: npx prettier --write src/data/cohorts.json
+      - run: npm run verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vehicle-cohort-samples
+          path: src/data/cohorts.json
+      - name: Propose updated cohort samples
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          if git diff --quiet -- src/data/cohorts.json; then
+            exit 0
+          fi
+          branch="automation/cohorts-${GITHUB_RUN_ID}"
+          git switch -c "$branch"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/data/cohorts.json
+          git commit -m 'Refresh sampled vehicle cohort statistics'
+          git push origin "$branch"
+          compare="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/$BASE_BRANCH...$branch?expand=1"
+          printf 'Verified cohort snapshot ready for review\n\n%s\n' "$compare" >> "$GITHUB_STEP_SUMMARY"
+          if ! gh pr create --draft --base "$BASE_BRANCH" --head "$branch" \
+            --title 'Refresh sampled vehicle cohort statistics' \
+            --body "Aggregate data checked with npm run verify in workflow run ${GITHUB_RUN_ID}."; then
+            echo '::warning::Automatic pull request unavailable. The run summary links to the verified snapshot.'
+          fi

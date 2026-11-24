@@ -13,12 +13,11 @@ export function GET() {
           row.variants.map(([trim]) => trim).filter(Boolean),
         ),
       );
-      const path = `${make.id}/${model.id}`;
       const search = normalizeCatalogTerm(
         [make.name, make.id, model.name, ...model.aliases, ...trims].join(' '),
       );
       return {
-        path,
+        path: `${make.id}/${model.id}`,
         make: make.name,
         name: model.name,
         aliases: model.aliases,

@@ -1,5 +1,24 @@
 import snapshot from './catalog.json?raw';
 
+export type ModelSpecifications = {
+  drive?: string;
+  propulsion?: string;
+  power?: number;
+  seats?: number;
+  towBraked?: number;
+  towUnbraked?: number;
+  pollution?: number;
+  safety?: number;
+};
+
+export type ModelSpecification = [
+  string | null,
+  string | null,
+  number | null,
+  number | null,
+  ModelSpecifications?,
+];
+
 export type Variant = {
   id: string;
   year: number;
@@ -8,7 +27,7 @@ export type Variant = {
   name: string;
   active: number;
   inactive: number;
-  variants: [string | null, string | null, number | null, number | null][];
+  variants: ModelSpecification[];
 };
 export type Model = {
   id: string;
@@ -17,6 +36,7 @@ export type Model = {
   records: Variant[];
 };
 export type Make = { id: string; name: string; models: Model[] };
+const rankedByMake = new WeakMap<Make, (Model & { active: number })[]>();
 type Catalog = {
   updatedAt: string;
   fetchedAt: string;
@@ -35,10 +55,38 @@ export function totals(rows: Variant[]) {
   );
 }
 
+export function rankedModels(make: Make) {
+  const previous = rankedByMake.get(make);
+  if (previous) return previous;
+  const ranked = make.models
+    .map((entry) => ({ ...entry, active: totals(entry.records).active }))
+    .sort((a, b) => b.active - a.active || a.name.localeCompare(b.name, 'he'));
+  rankedByMake.set(make, ranked);
+  return ranked;
+}
+
 export function years(model: Model) {
   return [...new Set(model.records.map((row) => row.year))].sort(
     (a, b) => b - a,
   );
+}
+
+export function totalsByYear(rows: Variant[]) {
+  const byYear = new Map<
+    number,
+    { year: number; active: number; inactive: number }
+  >();
+  for (const row of rows) {
+    const total = byYear.get(row.year) ?? {
+      year: row.year,
+      active: 0,
+      inactive: 0,
+    };
+    total.active += row.active;
+    total.inactive += row.inactive;
+    byYear.set(row.year, total);
+  }
+  return [...byYear.values()].sort((a, b) => b.year - a.year);
 }
 
 export const count = new Intl.NumberFormat('he-IL');

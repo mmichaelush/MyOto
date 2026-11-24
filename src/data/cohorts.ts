@@ -1,11 +1,13 @@
 import data from './cohorts.json' with { type: 'json' };
 
 type Cohort = {
+  fetchedAt?: string;
   variantKeys: string[];
   n: number;
   frameSize?: number;
   colors: [string, number][];
   ownership: [string, number][];
+  ownershipByTrim?: [string, string, number][];
   fuel: [string, number][];
   trims: [string, number][];
   mileage: { n: number; p25: number; median: number; p75: number } | null;

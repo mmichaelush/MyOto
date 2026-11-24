@@ -1,6 +1,41 @@
 import { expect, test } from '@playwright/test';
 import { resources } from '../../src/data/sources';
 
+test('reports clipboard, storage, print and PNG failures without losing the report', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: async () => {
+          throw new DOMException('Denied', 'NotAllowedError');
+        },
+      },
+    });
+    Storage.prototype.setItem = () => {
+      throw new DOMException('Denied', 'QuotaExceededError');
+    };
+    window.print = () => {
+      throw new DOMException('Denied', 'NotAllowedError');
+    };
+    HTMLCanvasElement.prototype.toBlob = (callback) => callback(null);
+  });
+  await page.goto('/MyOto/?search=0123456');
+  const status = page.locator('#search-status');
+  await page.getByRole('button', { name: 'שיתוף קישור' }).click();
+  await expect(status).toHaveText(/ההעתקה לא זמינה/);
+  await page.getByRole('button', { name: 'הדפסה / PDF' }).click();
+  await expect(status).toHaveText(/לא ניתן לפתוח את חלון ההדפסה/);
+  await page.getByText('עוד פעולות', { exact: true }).click();
+  await page.getByRole('button', { name: 'מועדף', exact: true }).click();
+  await expect(status).toHaveText(/הדפדפן חסם את האחסון המקומי/);
+  const image = page.getByRole('button', { name: 'תמונה PNG' });
+  await image.click();
+  await expect(status).toHaveText(/יצירת התמונה נכשלה/, { timeout: 15000 });
+  await expect(image).toBeEnabled();
+  await expect(page.locator('.vehicle-report')).toHaveCount(1);
+});
+
 test.beforeEach(async ({ page }) => {
   await page.route(
     (url) =>
@@ -53,7 +88,7 @@ test('opens a legacy link, renders safe text, saves and exports', async ({
   await page.getByRole('button', { name: 'מועדף' }).click();
   await expect(page.getByRole('heading', { name: 'מועדפים' })).toBeVisible();
   await page.getByRole('button', { name: 'שיתוף קישור' }).click();
-  await expect(page.getByRole('status')).toHaveText('הקישור הועתק.');
+  await expect(page.locator('#search-status')).toHaveText('הקישור הועתק.');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
     '?search=0123456',
   );
@@ -77,7 +112,9 @@ test('fits a mobile viewport and links into comparison', async ({ page }) => {
   await expect(page.getByLabel('רכב ראשון')).toHaveValue('0123456');
   await page.getByLabel('רכב שני').fill('12345678');
   await page.getByRole('button', { name: 'השוואה' }).click();
-  await expect(page.getByRole('table')).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'נתוני השוואה' }).getByRole('table'),
+  ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'השוואת מפרט' }),
   ).toBeVisible();
@@ -146,4 +183,22 @@ test('prints and downloads the report image', async ({ page }) => {
   ).toBeVisible();
   const pdf = await page.pdf({ format: 'A4' });
   expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+});
+
+test('runs lookup inside an iframe whose host includes no script', async ({
+  page,
+}) => {
+  await page.route('**/fixture-host/', (route) =>
+    route.fulfill({
+      contentType: 'text/html',
+      body: '<iframe title="בדיקת רכב" src="/MyOto/embed/" width="100%" height="720"></iframe>',
+    }),
+  );
+  await page.goto('/fixture-host/');
+  const lookup = page.frameLocator('iframe');
+  await lookup.getByLabel('מספר רישוי או צמ״ה').fill('0123456');
+  await lookup.getByRole('button', { name: 'חיפוש רכב' }).click();
+  await expect(
+    lookup.getByRole('heading', { name: 'היסטוריית בעלויות' }),
+  ).toBeVisible();
 });

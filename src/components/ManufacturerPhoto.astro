@@ -1,0 +1,76 @@
+---
+interface Props {
+  make: string;
+}
+const { make } = Astro.props;
+const photos = new Map([
+  [
+    'toyota',
+    {
+      model: 'טויוטה קורולה',
+      author: 'LuvsMG481',
+      height: 160,
+      version: '4.0',
+      file: '2021_Toyota_Corolla_Ascent_Sport_Hybrid_front.jpg',
+    },
+  ],
+  [
+    'hyundai',
+    {
+      model: 'יונדאי טוסון',
+      author: 'Kevauto',
+      height: 190,
+      version: '4.0',
+      file: '2022_Hyundai_Tucson_SEL,_front_5.2.22.jpg',
+    },
+  ],
+  [
+    'mitsubishi',
+    {
+      model: 'מיצובישי לנסר',
+      author: 'M 93',
+      height: 240,
+      version: '3.0',
+      file: 'Mitsubishi_Lancer_front.jpg',
+    },
+  ],
+  [
+    'kia',
+    {
+      model: 'קיה ספורטאז׳',
+      author: 'Corvettec6r',
+      height: 212,
+      version: '4.0',
+      file: '2022_Kia_Sportage.jpg',
+    },
+  ],
+]);
+const photo = photos.get(make);
+---
+
+{photo && (
+  <figure class="manufacturer-photo">
+    <img
+      src={import.meta.env.BASE_URL + `manufacturers/${make}.jpg`}
+      width="330"
+      height={photo.height}
+      alt={photo.model}
+      decoding="async"
+    />
+    <figcaption>
+      דגם לדוגמה ·{' '}
+      <a
+        href={
+          'https://commons.wikimedia.org/wiki/File:' +
+          encodeURIComponent(photo.file)
+        }
+      >
+        <bdi>{photo.author}</bdi>
+      </a>
+      {' · '}
+      <a href={`https://creativecommons.org/licenses/by-sa/${photo.version}/`}>
+        <bdi>CC BY-SA {photo.version}</bdi>
+      </a>
+    </figcaption>
+  </figure>
+)}

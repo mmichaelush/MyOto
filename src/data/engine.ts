@@ -1,11 +1,10 @@
-import { CkanClient, RequestBudget } from './ckan';
+﻿import { CkanClient, RequestBudget } from './ckan';
 import {
-  identityMatch,
   modelFilter,
   modelSources,
   plateFilter,
+  primary,
   resources,
-  statuses,
   ttl,
   type SourceId,
 } from './sources';
@@ -13,13 +12,18 @@ import type { Scalar } from './types';
 import { buildReport, type Report, type SourceReplies } from '../domain/report';
 import { parsePlate, type SearchDomain } from '../domain/plate';
 
-const regular = [
-  'private_cars_1',
-  'personalImport',
-  'publicTransport',
-  'heavy',
-  'twoWheeled',
-  ...statuses,
+const discoverySources = primary.filter((key) => key !== 'cme');
+const reportSources = [
+  'private_cars_2',
+  'history_1',
+  'history_2',
+  'disabledPermit',
+] as const;
+const supplementalSources = [
+  'safetyDiscount',
+  'filters',
+  'busFleet',
+  'anchors',
 ] as const;
 export const registrationRequestBudget = 28;
 
@@ -27,6 +31,10 @@ export type Discovery = {
   reports: Report[];
   checks: Record<SearchDomain, 'found' | 'empty' | 'partial'>;
 };
+
+export type DiscoveryPreview =
+  | { kind: 'registration' | 'recall'; report: Report }
+  | { kind: 'collision'; reports: [Report, Report] };
 
 export class VehicleEngine {
   constructor(private readonly client = new CkanClient()) {}
@@ -37,7 +45,7 @@ export class VehicleEngine {
     signal: AbortSignal,
     update?: (report: Report) => void,
     legacyFallback = true,
-  ): Promise<Report> {
+  ) {
     return this.lookup(
       input,
       domain,
@@ -48,25 +56,82 @@ export class VehicleEngine {
     );
   }
 
+  comparison(input: string, signal: AbortSignal) {
+    return this.search(input, 'registration', signal, undefined, false);
+  }
+
   async discover(
     input: string,
     signal: AbortSignal,
-    update?: (report: Report) => void,
+    update?: (preview: DiscoveryPreview) => void,
   ): Promise<Discovery> {
-    // The two namespaces share the HTTP budget but never share source records.
     const budget = new RequestBudget(registrationRequestBudget);
-    const [registration, equipment] = await Promise.all([
-      this.lookup(input, 'registration', signal, budget, (report) => {
-        if (!report.complete) update?.(report);
-      }),
-      this.lookup(input, 'equipment', signal, budget),
+    let registrationPreview: Report | undefined;
+    let equipmentPreview: Report | undefined;
+    let shown: DiscoveryPreview['kind'] | undefined;
+    const emitPreview = () => {
+      if (
+        !update ||
+        !registrationPreview ||
+        !equipmentPreview ||
+        signal.aborted
+      )
+        return;
+      const report = registrationPreview;
+      const equipment = equipmentPreview;
+      const matched = report.identity || report.recalls.length;
+      const preview: DiscoveryPreview | undefined =
+        matched && equipment.identity
+          ? { kind: 'collision', reports: [report, equipment] }
+          : report.identity && !equipment.sources.cme?.issue
+            ? { kind: 'registration', report }
+            : report.recalls.length
+              ? { kind: 'recall', report }
+              : undefined;
+      if (preview && shown !== preview.kind) {
+        shown = preview.kind;
+        update(preview);
+      }
+    };
+    const equipmentLookup = this.lookup(
+      input,
+      'equipment',
+      signal,
+      budget,
+    ).then((report) => {
+      equipmentPreview = report;
+      emitPreview();
+      return report;
+    });
+    const registrationLookup = this.lookup(
+      input,
+      'registration',
+      signal,
+      budget,
+      (report) => {
+        if (!report.complete) {
+          registrationPreview = report;
+          emitPreview();
+        }
+      },
+      false,
+      true,
+    );
+    const [equipment, registration] = await Promise.all([
+      equipmentLookup,
+      registrationLookup,
     ]);
-    const check = (report: Report) =>
-      report.identity && !report.sources[report.identity]?.issue
-        ? 'found'
-        : report.outcome === 'empty'
-          ? 'empty'
-          : 'partial';
+    const check = (report: Report) => {
+      if (report.identity && !report.sources[report.identity]?.issue)
+        return 'found';
+      const scope =
+        report.domain === 'equipment' ? (['cme'] as const) : discoverySources;
+      return scope.every(
+        (key) => report.sources[key] && !report.sources[key]?.issue,
+      )
+        ? 'empty'
+        : 'partial';
+    };
     return {
       reports: [registration, equipment],
       checks: {
@@ -83,25 +148,33 @@ export class VehicleEngine {
     budget: RequestBudget,
     update?: (report: Report) => void,
     legacyFallback = false,
+    previewRecall = false,
   ): Promise<Report> {
     const plate = parsePlate(input);
     if (!plate)
       throw new RangeError('Invalid registration or equipment number');
     const sources: SourceReplies = {};
-    let published = false;
-    const publish = () => {
-      if (!update || published || signal.aborted) return;
-      const preview = buildReport(plate, domain, sources, false);
-      if (
-        preview.identity &&
-        !statuses.some((key) => key === preview.identity)
-      ) {
-        published = true;
-        update(preview);
+    let elected = false;
+    let selectIdentity: ((key?: SourceId) => void) | undefined;
+    const elect = () => {
+      if (elected || signal.aborted) return;
+      const priority =
+        domain === 'equipment' ? (['cme'] as const) : discoverySources;
+      for (const key of priority) {
+        const reply = sources[key];
+        if (!reply) return;
+        if (reply.rows.length) {
+          elected = true;
+          selectIdentity?.(key);
+          update?.(buildReport(plate, domain, sources, false));
+          return;
+        }
       }
+      elected = true;
+      selectIdentity?.();
     };
     const query = async (key: SourceId, filter = plateFilter(key, plate)) => {
-      sources[key] = await this.client.lookup(
+      const reply = await this.client.lookup(
         resources[key],
         filter,
         signal,
@@ -109,62 +182,26 @@ export class VehicleEngine {
         budget,
       );
       signal.throwIfAborted();
-      publish();
+      sources[key] = reply;
+      elect();
+      return reply;
     };
     if (domain === 'equipment') {
       await query('cme');
     } else {
-      await Promise.all(regular.map((key) => query(key)));
-      const discovery = buildReport(plate, domain, sources, false);
-      const base = discovery.identity
-        ? sources[discovery.identity]?.rows[0]
-        : undefined;
-      if (base) {
-        const isType = (key: SourceId) =>
-          discovery.identity === key ||
-          sources[key]?.rows.some(
-            (row) => identityMatch(base, row) === 'verified',
-          );
-        const lookups: Promise<void>[] = [
-          query('recall'),
-          query('disabledPermit'),
-        ];
-        if (
-          isType('private_cars_1') ||
-          isType('frozen_with_model') ||
-          isType('offRoad_1')
-        ) {
-          lookups.push(
-            query('history_1'),
-            query('history_2'),
-            query('safetyDiscount'),
-          );
-        }
-        if (isType('private_cars_1')) lookups.push(query('private_cars_2'));
-        if (
-          isType('publicTransport') &&
-          sources.publicTransport?.rows.some((row) =>
-            /^אוטובוס/.test(String(row.sug_rechev_nm ?? '')),
-          )
-        ) {
-          lookups.push(query('busFleet'));
-        }
-        if (isType('heavy') || isType('publicTransport'))
-          lookups.push(query('anchors'));
-        if (
-          isType('heavy') ||
-          isType('publicTransport') ||
-          (isType('private_cars_1') &&
-            /דיזל/.test(String(base.sug_delek_nm ?? '')))
-        )
-          lookups.push(query('filters'));
-        const filters = modelFilter(base);
-        if (filters)
-          lookups.push(...modelSources.map((key) => query(key, filters)));
-        await Promise.all(lookups);
-        const campaignIds = [
+      const identity = new Promise<SourceId | undefined>((resolve) => {
+        selectIdentity = resolve;
+      });
+      const recalls = query('recall');
+      const discovery = Promise.all(discoverySources.map((key) => query(key)));
+      const details = Promise.all(reportSources.map((key) => query(key)));
+      const supplemental = Promise.all(
+        supplementalSources.map((key) => query(key)),
+      );
+      const campaigns = recalls.then(({ rows }) => {
+        const ids = [
           ...new Set(
-            sources.recall?.rows
+            rows
               .map((row) => row.RECALL_ID)
               .filter(
                 (id): id is Exclude<Scalar, null | boolean> =>
@@ -173,20 +210,33 @@ export class VehicleEngine {
               ),
           ),
         ];
-        if (campaignIds.length)
-          await query('campaigns', { RECALL_ID: campaignIds });
-      } else if (
-        legacyFallback &&
-        regular.every((key) => !sources[key]?.issue)
-      ) {
-        // Maintain old number-only links for equipment without combining the domains.
-        await query('cme');
-      }
+        return ids.length ? query('campaigns', { RECALL_ID: ids }) : undefined;
+      });
+      const specs = identity.then(async (key) => {
+        const base = key ? sources[key]?.rows[0] : undefined;
+        const filter = base ? modelFilter(base) : undefined;
+        if (filter)
+          await Promise.all(modelSources.map((key) => query(key, filter)));
+        if (!key) {
+          const recall = await recalls;
+          if (previewRecall && recall.rows.length)
+            update?.(buildReport(plate, domain, sources, false));
+          if (
+            legacyFallback &&
+            !recall.rows.length &&
+            discoverySources.every((source) => !sources[source]?.issue)
+          )
+            await query('cme');
+        }
+      });
+      await Promise.all([discovery, details, campaigns, supplemental, specs]);
     }
+    const fallback =
+      domain !== 'equipment' && Boolean(sources.cme?.rows.length);
     const result = buildReport(
       plate,
-      sources.cme?.rows.length ? 'equipment' : domain,
-      sources,
+      fallback ? 'equipment' : domain,
+      fallback ? { cme: sources.cme } : sources,
       true,
     );
     update?.(result);

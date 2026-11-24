@@ -1,0 +1,58 @@
+---
+import Distribution from './Distribution.astro';
+import { count, type Variant } from '../data/catalog';
+import {
+  fleetDistribution,
+  unknownSpecification,
+} from '../domain/model-distributions';
+interface Props {
+  rows: Variant[];
+  total: number;
+}
+const { rows, total } = Astro.props;
+const groups = [
+  ['סוגי דלק', fleetDistribution(rows, ([, fuel]) => fuel)],
+  [
+    'טכנולוגיות הנעה',
+    fleetDistribution(rows, ([, , , , extra]) => extra?.propulsion),
+  ],
+  ['תצורות הנעה', fleetDistribution(rows, ([, , , , extra]) => extra?.drive)],
+  [
+    'תיבות הילוכים',
+    fleetDistribution(rows, ([, , , automatic]) =>
+      Number(automatic) === 1
+        ? 'אוטומטית'
+        : automatic === 0 || String(automatic) === '0'
+          ? 'ללא תיבה אוטומטית'
+          : undefined,
+    ),
+  ],
+] as const;
+const available = groups.filter(([, values]) =>
+  values.some(([label]) => label !== unknownSpecification),
+);
+---
+
+{total > 0 && (
+  <section class="panel catalog-data">
+    <h2>התפלגות כלי הרכב הפעילים</h2>
+    {available.length ? (
+      <>
+        <p class="muted">
+          מתוך {count.format(total)} כלי רכב פעילים בדף זה. ספירת כלי הרכב לפי
+          קוד דגם משויכת למפרט רק כשכל הגרסאות הרשומות לאותו קוד מסכימות על
+          הערך.
+        </p>
+        <div class="grid-data">
+          {available.map(([label, values]) => (
+            <Distribution {label} {values} {total} />
+          ))}
+        </div>
+      </>
+    ) : (
+      <p>
+        המפרט הזמין אינו מספיק להצגת התפלגות לפי סוג דלק, הנעה או תיבת הילוכים.
+      </p>
+    )}
+  </section>
+)}

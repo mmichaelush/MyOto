@@ -1,0 +1,76 @@
+---
+import { cohorts } from '../data/cohorts';
+import { type Model, years } from '../data/catalog';
+import Distribution from './Distribution.astro';
+interface Props {
+  model: Model;
+  path: string;
+  year?: number;
+}
+const { model, path, year } = Astro.props;
+const options = (year ? [year] : years(model)).flatMap((value) => {
+  const codes = model.records
+    .filter(
+      (row) =>
+        row.year === value && row.active && ['P', 'M'].includes(row.type),
+    )
+    .map((row) => row.id);
+  return codes.length ? [{ year: value, codes }] : [];
+});
+const recorded = year
+  ? []
+  : years(model).flatMap((value) => {
+      const sample = cohorts[`${path}/${value}`];
+      return sample ? [{ year: value, sample }] : [];
+    });
+---
+
+{(options.length > 0 || recorded.length > 0) && (
+  <section class="panel catalog-data">
+    <h2>סוגי בעלות רשומה</h2>
+    {recorded.length > 0 && (
+      <>
+        <p class="muted">
+          אחוזי בעלות בכל שנתון מחושבים בנפרד לפי המדגם הזמין.
+        </p>
+        <div class="grid-data">
+          {recorded.map(({ year, sample }) => (
+            <Distribution
+              label={`שנתון ${year} · ${sample.n} רכבים במדגם`}
+              values={sample.ownership}
+              total={sample.n}
+            />
+          ))}
+        </div>
+      </>
+    )}
+    {options.length > 0 && (
+      <form hidden class="ownership-sample-form" data-model={model.name}>
+        <div class="ownership-sample-controls">
+          <label class="control">
+            שנתון למדגם
+            <select>
+              {options.map((option) => (
+                <option
+                  value={option.year}
+                  data-codes={JSON.stringify(option.codes)}
+                >
+                  {option.year}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" class="secondary">
+            בדיקת מדגם עדכני
+          </button>
+        </div>
+        <p class="muted" role="status"></p>
+        <div data-sample-output></div>
+      </form>
+    )}
+  </section>
+)}
+
+<script>
+  import '../ui/ownership-sample';
+</script>

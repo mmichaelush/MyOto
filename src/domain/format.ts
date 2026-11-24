@@ -43,6 +43,40 @@ export function quarter(value: Scalar) {
     : String(value ?? 'לא זמין');
 }
 
+export function ownershipDate(value: Scalar) {
+  const text = String(value ?? '');
+  const month = /^(\d{4})(0[1-9]|1[0-2])$/.exec(text);
+  if (!month)
+    return text && dateOrder(value) ? dateLabel(value) : 'מועד לא זמין';
+  const start = Math.floor((Number(month[2]) - 1) / 3) * 3;
+  const months = new Intl.DateTimeFormat('he-IL', {
+    month: 'long',
+    timeZone: 'UTC',
+  });
+  const label = (offset: number) =>
+    months.format(Date.UTC(Number(month[1]), start + offset));
+  return `${label(0)}–${label(2)} ${month[1]}`;
+}
+
+export function expiredDays(value: Scalar, now: Date) {
+  const text = String(value);
+  if (!/^\d{4}(?:-\d{2}-\d{2}|\d{4})(?:$|[T ])/.test(text)) return 0;
+  const date = dateOrder(value);
+  if (!date) return 0;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    timeZone: 'Asia/Jerusalem',
+  }).formatToParts(now);
+  const get = (name: string) =>
+    Number(parts.find(({ type }) => type === name)?.value);
+  return Math.max(
+    0,
+    (Date.UTC(get('year'), get('month') - 1, get('day')) - date) / 86_400_000,
+  );
+}
+
 export function displayValue(key: string, value: Scalar) {
   if (value === null) return 'לא זמין';
   const spec = fieldLabels[key];

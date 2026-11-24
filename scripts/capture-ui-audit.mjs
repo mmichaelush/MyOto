@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
 import sources from '../src/data/resources.json' with { type: 'json' };
@@ -27,6 +27,7 @@ const cases = [
   ['ownership', '60234567', 'private_cars_1'],
   ['historic', '00123456', 'offRoad_2'],
   ['collision', '90234567', 'private_cars_1'],
+  ['arrangement', '11234567', 'private_cars_1'],
 ];
 const names = {
   private: 'טויוטה',
@@ -51,8 +52,59 @@ const root = new URL('../.astro/ui-audit/', import.meta.url);
 await mkdir(root, { recursive: true });
 const browser = await chromium.launch();
 const wanted = new Set(process.argv.slice(3));
-const editions = mode === 'before' ? ['legacy', 'before'] : ['after'];
+const fieldAudit = mode === 'fields';
+const editions = fieldAudit
+  ? ['legacy', 'after']
+  : mode === 'before'
+    ? ['legacy', 'before']
+    : ['after'];
 const result = [];
+const returned = new WeakMap();
+
+async function captureFields(page, legacy) {
+  const rows = await page.evaluate((old) => {
+    if (old) {
+      // The baseline declares FIELD_LABELS in the top-level scope of its script.
+      const metadata = window.eval('FIELD_LABELS');
+      return [...document.querySelectorAll('#resultsArea li > strong')].map(
+        (node) => {
+          const label = node.textContent.trim();
+          return {
+            keys: Object.keys(metadata).filter(
+              (key) => metadata[key].l === label,
+            ),
+            label,
+            text: node.nextElementSibling?.textContent.trim(),
+            section: node
+              .closest('ul')
+              ?.previousElementSibling?.textContent.trim(),
+          };
+        },
+      );
+    }
+    return [
+      ...document.querySelectorAll(':is(.data-row, .data-metric)[data-field]'),
+    ].map((node) => ({
+      keys: [node.dataset.field],
+      label: node.querySelector('dt')?.textContent.trim(),
+      text: node.querySelector('dd > bdi')?.textContent.trim(),
+      section: node.closest('section')?.querySelector('h3')?.textContent.trim(),
+      conflicting: Boolean(node.querySelector('.field-disclosure small')),
+    }));
+  }, legacy);
+  let selected;
+  const menu = page.locator('.report-more > summary');
+  if (!legacy && (await menu.isVisible())) {
+    await menu.click();
+    const [file] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'JSON', exact: true }).click(),
+    ]);
+    const report = JSON.parse(await readFile(await file.path(), 'utf8'));
+    selected = report.fields;
+  }
+  return { rows, selected, returns: returned.get(page) ?? [] };
+}
 try {
   for (const edition of editions) {
     await mkdir(new URL(edition + '/', root), { recursive: true });
@@ -175,6 +227,12 @@ try {
               'TAARICH HAFAKAT TAG': 20260104,
             },
           ];
+        if (fieldAudit && rows.length && resource) {
+          const page = route.request().frame().page();
+          const replies = returned.get(page) ?? [];
+          replies.push({ source: resource, rows });
+          returned.set(page, replies);
+        }
         const body = { success: true, result: { limit: 50, records: rows } };
         const callback = params.get('callback');
         if (callback && /^\w+$/.test(callback)) {
@@ -189,11 +247,14 @@ try {
         });
       },
     );
-    const queue = widths.flatMap((width) =>
+    const queue = (fieldAudit ? [390] : widths).flatMap((width) =>
       cases
         .filter(
           ([name, plate]) =>
-            (edition !== 'legacy' || plate || name === 'home') &&
+            (name !== 'arrangement' || wanted.has(name)) &&
+            (fieldAudit
+              ? Boolean(plate)
+              : edition !== 'legacy' || plate || name === 'home') &&
             (wanted.size
               ? wanted.has(name)
               : width === 1366 ||
@@ -263,6 +324,16 @@ try {
                 .locator('#comparison table')
                 .waitFor({ timeout: 8000 })
                 .catch(() => {});
+            if (fieldAudit && edition === 'after' && name === 'collision')
+              await page
+                .getByRole('button', { name: /רכב ברישוי רגיל/ })
+                .click();
+            if (name === 'arrangement') {
+              await page.getByRole('button', { name: 'סידור הדוח' }).click();
+              await page.locator('.report-order-bar').evaluate((node) => {
+                node.scrollIntoView({ block: 'start' });
+              });
+            }
             const metrics = await page.evaluate(
               (edition) => ({
                 title: document.querySelector('h1')?.textContent?.trim(),
@@ -287,15 +358,25 @@ try {
               }),
               edition,
             );
-            await page.screenshot({
-              path: fileURLToPath(
-                new URL(edition + '/' + name + '-' + width + '.png', root),
-              ),
-              fullPage: true,
-              animations: 'disabled',
-              timeout: 10000,
-            });
-            result.push({ edition, name, width, ...metrics });
+            if (fieldAudit) {
+              result.push({
+                edition,
+                name,
+                width,
+                ...metrics,
+                ...(await captureFields(page, edition === 'legacy')),
+              });
+            } else {
+              await page.screenshot({
+                path: fileURLToPath(
+                  new URL(edition + '/' + name + '-' + width + '.png', root),
+                ),
+                fullPage: name !== 'arrangement',
+                animations: 'disabled',
+                timeout: 10000,
+              });
+              result.push({ edition, name, width, ...metrics });
+            }
           } catch (error) {
             result.push({ edition, name, width, issue: error.name });
           }
@@ -306,12 +387,34 @@ try {
     await context.close();
   }
 } finally {
+  const output = fieldAudit
+    ? result
+        .filter((entry) => entry.edition === 'after')
+        .map((after) => {
+          const old = result.find(
+            (entry) => entry.edition === 'legacy' && entry.name === after.name,
+          );
+          const changes = (old?.rows ?? []).map((before) => ({
+            before,
+            after: (after.rows ?? []).filter((row) =>
+              before.keys.some((key) => row.keys.includes(key)),
+            ),
+          }));
+          return {
+            name: after.name,
+            issues: [old?.issue, after.issue].filter(Boolean),
+            changes,
+            old,
+            after,
+          };
+        })
+    : result;
   await writeFile(
     new URL(
       mode + (wanted.size ? '-' + [...wanted].join('-') : '') + '.json',
       root,
     ),
-    JSON.stringify(result, null, 2),
+    JSON.stringify(output, null, 2),
   );
   await browser.close();
   server.close();
