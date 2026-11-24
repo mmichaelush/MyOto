@@ -622,8 +622,11 @@ pre {
 }
 .catalog-filters > label {
   min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
 }
-.catalog-filters select {
+.catalog-filters select,
+.catalog-filters input {
+  min-width: 0;
   width: 100%;
 }
 .catalog-results-heading {
@@ -709,7 +712,7 @@ meter {
   th {
     print-color-adjust: exact;
   }
-  .compact-print .vehicle-report > :not(.report-summary) {
+  .compact-print .vehicle-report > :not(.report-summary, .notice) {
     display: none;
   }
 }

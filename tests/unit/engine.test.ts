@@ -200,3 +200,57 @@ test('formats dates without shifting them and represents periods at source preci
   expect(quarter(201803)).toBe('רבעון 1, 2018');
   expect(quarter(201804)).toBe('רבעון 2, 2018');
 });
+
+test('checks an unmatched legacy number for equipment without mixing namespaces', async () => {
+  const fetcher = vi.fn<typeof fetch>(async (input) => {
+    const search = new URL(String(input)).searchParams;
+    return valid(
+      search.get('resource_id') === resources.cme.id
+        ? [{ mispar_tzama: 123456 }]
+        : [],
+    );
+  });
+  const result = await new VehicleEngine(new CkanClient(fetcher)).search(
+    '0123456',
+    'registration',
+    new AbortController().signal,
+  );
+  expect(result).toMatchObject({
+    domain: 'equipment',
+    identity: 'cme',
+    outcome: 'found',
+  });
+  expect(result.sources.recall).toBeUndefined();
+});
+
+test('bounds concurrent requests and fetches all ownership pages without collapsing repeated events', async () => {
+  let active = 0;
+  let maxActive = 0;
+  const fetcher = vi.fn<typeof fetch>(async (input) => {
+    active++;
+    maxActive = Math.max(active, maxActive);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active--;
+    const params = new URL(String(input)).searchParams;
+    const plate = JSON.parse(params.get('filters') ?? '{}').mispar_rechev;
+    const offset = Number(params.get('offset'));
+    return valid(
+      Array.from({ length: offset === 0 ? 50 : 3 }, (_, index) => ({
+        _id: offset + index,
+        mispar_rechev: plate,
+        baalut: 'סוחר',
+        baalut_dt: 202601,
+      })),
+    );
+  });
+  const client = new CkanClient(fetcher, 2);
+  const signal = new AbortController().signal;
+  const results = await Promise.all(
+    [123456, 234567, 345678, 456789].map((plate) =>
+      client.lookup(resources.history_2, { mispar_rechev: plate }, signal),
+    ),
+  );
+  expect(maxActive).toBe(2);
+  expect(fetcher).toHaveBeenCalledTimes(8);
+  expect(results.map((result) => result.rows.length)).toEqual([53, 53, 53, 53]);
+});
