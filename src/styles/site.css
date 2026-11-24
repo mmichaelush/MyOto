@@ -343,6 +343,19 @@ h3 {
 .compare-details th[scope='rowgroup'] {
   background: #e8f0fb;
 }
+.compare-context > section {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.compare-context h2 {
+  font-size: 1.1rem;
+}
+.compare-context .source-list {
+  margin-block-start: 0.7rem;
+}
+.compare-details [scope='row'] .ui-icon {
+  flex: none;
+}
 @media (max-width: 40rem) {
   .compare-card dl {
     display: block;

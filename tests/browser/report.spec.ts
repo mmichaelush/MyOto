@@ -112,7 +112,9 @@ test('fits a mobile viewport and links into comparison', async ({ page }) => {
   await expect(page.getByLabel('רכב ראשון')).toHaveValue('0123456');
   await page.getByLabel('רכב שני').fill('12345678');
   await page.getByRole('button', { name: 'השוואה' }).click();
-  await expect(page.getByRole('table')).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'נתוני השוואה' }).getByRole('table'),
+  ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'השוואת מפרט' }),
   ).toBeVisible();

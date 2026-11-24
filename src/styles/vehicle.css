@@ -298,6 +298,11 @@ main:has(.lookup-hero) {
   font-size: 0.81rem;
   margin-block-start: 0.2rem;
 }
+.data-scope {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
 .section-order {
   display: flex;
   gap: 0.3rem;
@@ -305,7 +310,6 @@ main:has(.lookup-hero) {
   padding-block-end: 0.5rem;
 }
 .drag-handle {
-  display: inline-flex;
   align-items: center;
   min-height: 44px;
   cursor: grab;
@@ -313,7 +317,13 @@ main:has(.lookup-hero) {
   user-select: none;
   color: var(--blue);
   font-weight: 650;
-  padding-inline: 0.4rem;
+}
+.drag-handle .section-grip {
+  margin-inline-start: auto;
+  color: var(--muted);
+}
+.drag-handle:active {
+  cursor: grabbing;
 }
 .report-order-toggle {
   color: var(--blue);
@@ -326,7 +336,7 @@ main:has(.lookup-hero) {
 .report-order-toggle[aria-pressed='true'] {
   background: var(--light);
 }
-.arranging > .section-dragging {
+.report-sections > .section-dragging {
   opacity: 0.55;
 }
 .report-order-bar {
@@ -654,6 +664,7 @@ main:has(.lookup-hero) {
   .recall-reminder,
   .section-order,
   .report-order-bar,
+  .section-grip,
   .embed-link,
   .lookup-status,
   .recall-scope,

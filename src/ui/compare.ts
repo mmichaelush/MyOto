@@ -5,10 +5,14 @@ import type { Report } from '../domain/report';
 import { button, element, link } from './dom';
 import {
   baseSections,
+  categories,
   statusLabels,
   vehicleName,
+  vehicleViewModel,
   type DataRow,
 } from '../presentation/vehicle-view-model';
+import { dataTable, sourceDetails } from './report';
+import { renderRecall } from './recall-panel';
 import { mark } from './icons';
 import { logFailure, logLookup } from './diagnostics';
 
@@ -69,7 +73,10 @@ function snapshot(report: Report, side: string) {
       element('dd', statusLabels[report.status]),
     );
   }
-  if (report.sources.recall)
+  if (
+    report.sources.recall &&
+    (report.identity || report.recalls.length || report.sources.recall.issue)
+  )
     data.append(
       element('dt', 'מאגר הגבלות ריקול'),
       element(
@@ -83,6 +90,32 @@ function snapshot(report: Report, side: string) {
     );
   if (data.childElementCount) card.append(data);
   return card;
+}
+
+function comparisonFields(
+  report: Report,
+  additional: ReturnType<typeof vehicleViewModel>['additional'],
+) {
+  const fields = new Map<
+    string,
+    { section: string; title: string; rows: DataRow[] }
+  >();
+  for (const section of [...baseSections(report), ...additional]) {
+    for (const row of section.groups.flat()) {
+      const key = `${section.id}/${row.id}`;
+      const existing = fields.get(key);
+      if (existing) {
+        if (!existing.rows.some((value) => value.text === row.text))
+          existing.rows.push(row);
+      } else
+        fields.set(key, {
+          section: section.id,
+          title: section.title,
+          rows: [row],
+        });
+    }
+  }
+  return fields;
 }
 
 function comparison(reports: Report[], signal: AbortSignal) {
@@ -118,49 +151,63 @@ function comparison(reports: Report[], signal: AbortSignal) {
   }
   for (const column of header.cells) column.scope = 'col';
   const groups = new Map<string, HTMLTableSectionElement>();
-  const sides = reports.map(
-    (report) =>
-      new Map(
-        baseSections(report).flatMap((section) =>
-          section.groups
-            .flat()
-            .map((row) => [row.id, { section: section.title, row }] as const),
-        ),
-      ),
+  const views = reports.map((report) => vehicleViewModel(report));
+  const sides = reports.map((report, index) =>
+    comparisonFields(report, views[index].additional),
   );
   const ids = new Set(sides.flatMap((entries) => [...entries.keys()]));
   for (const key of ids) {
-    const entries: (DataRow | undefined)[] = sides.map(
-      (side) => side.get(key)?.row,
-    );
+    const entries = sides.map((side) => side.get(key)?.rows ?? []);
     const field = sides[0].get(key) ?? sides[1].get(key)!;
     let group = groups.get(field.section);
     if (!group) {
       group = table.createTBody();
       groups.set(field.section, group);
-      const separator = element('th', field.section);
+      const separator = element('th', field.title);
       separator.colSpan = 3;
       separator.scope = 'rowgroup';
       group.insertRow().append(separator);
     }
     const row = group.insertRow();
-    const [left, right] = entries;
+    const [left, right] = entries.map((values) =>
+      values.length === 1 ? values[0] : undefined,
+    );
     if (
       left &&
       right &&
+      Object.hasOwn(categories, field.section) &&
+      !left.scope &&
+      !right.scope &&
       !left.differences &&
       !right.differences &&
       normalized(left.text) !== normalized(right.text)
     )
       row.className = 'different';
-    const label = element('th', field.row.label);
+    const label = element('th');
+    label.append(
+      mark(element('span', field.rows[0].label), field.rows[0].icon ?? 'info'),
+    );
     label.scope = 'row';
     row.append(label);
-    for (const entry of entries) {
+    for (const values of entries) {
       const cell = row.insertCell();
-      cell.append(element('bdi', entry ? entry.text : 'לא זמין'));
-      if (entry?.differences)
-        cell.append(element('small', 'ערכים שונים במקורות'));
+      if (!values.length) cell.append(element('bdi', 'לא זמין'));
+      for (const entry of values) {
+        const value = element('div');
+        value.append(element('bdi', entry.text));
+        if (entry.scope === 'model')
+          value.append(element('small', 'לפי מפרט הדגם'));
+        if (entry.differences) {
+          const alternatives = element('details');
+          alternatives.append(element('summary', 'ערכים שונים במקורות'));
+          for (const detail of entry.differences)
+            alternatives.append(
+              element('p', `${detail.text} · ${detail.source}`),
+            );
+          value.append(alternatives);
+        }
+        cell.append(value);
+      }
     }
   }
   const differenceCount = table.querySelectorAll('tr.different').length;
@@ -196,7 +243,30 @@ function comparison(reports: Report[], signal: AbortSignal) {
     summary,
     groups.size ? scroll : element('p', 'טרם נמצאו שדות להשוואה.'),
   );
-  result.replaceChildren(cards, details);
+  const context = element('div', undefined, 'compare-cards compare-context');
+  for (const [index, report] of reports.entries()) {
+    const side = element('section', undefined, 'panel');
+    side.append(
+      element('h2', `רישומים ומקורות · ${formatPlate(report.plate)}`),
+    );
+    const view = views[index];
+    if (view.alerts.length) {
+      const notices = element('ul');
+      notices.append(...view.alerts.map((message) => element('li', message)));
+      side.append(notices);
+    }
+    side.append(...view.tables.map(dataTable));
+    if (report.recalls.length) {
+      const recall = renderRecall(report, false, 'h3');
+      recall.removeAttribute('id');
+      side.append(recall);
+    }
+    const sources = sourceDetails(report);
+    sources.removeAttribute('id');
+    side.append(sources);
+    context.append(side);
+  }
+  result.replaceChildren(cards, details, context);
 }
 
 function fill(restore = false) {

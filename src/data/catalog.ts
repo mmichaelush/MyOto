@@ -1,5 +1,24 @@
 import snapshot from './catalog.json?raw';
 
+export type ModelSpecifications = {
+  drive?: string;
+  propulsion?: string;
+  power?: number;
+  seats?: number;
+  towBraked?: number;
+  towUnbraked?: number;
+  pollution?: number;
+  safety?: number;
+};
+
+export type ModelSpecification = [
+  string | null,
+  string | null,
+  number | null,
+  number | null,
+  ModelSpecifications?,
+];
+
 export type Variant = {
   id: string;
   year: number;
@@ -8,7 +27,7 @@ export type Variant = {
   name: string;
   active: number;
   inactive: number;
-  variants: [string | null, string | null, number | null, number | null][];
+  variants: ModelSpecification[];
 };
 export type Model = {
   id: string;

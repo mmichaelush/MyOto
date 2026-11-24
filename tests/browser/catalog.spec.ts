@@ -61,3 +61,49 @@ test('downloads facet data only for facet filters and opens a matching year', as
   ).toHaveAttribute('href', /toyota\/corolla\/2021\/$/);
   expect(requests).toBe(1);
 });
+
+test('model overview shows fleet statistics and samples ownership for the selected year', async ({
+  page,
+}) => {
+  await page.goto('/MyOto/models/mitsubishi/lancer/');
+  await expect(
+    page.getByRole('heading', { name: 'התפלגות כלי הרכב הפעילים' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'סוגי בעלות רשומה' }),
+  ).toBeVisible();
+  const select = page.getByLabel('שנתון למדגם');
+  await select.selectOption('2010');
+  const [type, make, code, year] = JSON.parse(
+    (await select.locator('option[value="2010"]').getAttribute('data-codes'))!,
+  )[0].split('/');
+  await page.route(
+    'https://data.gov.il/api/3/action/datastore_search?**',
+    async (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      expect(JSON.parse(params.get('filters')!)).toMatchObject({
+        kinuy_mishari: 'LANCER',
+        shnat_yitzur: 2010,
+      });
+      const records =
+        params.get('limit') === '0'
+          ? []
+          : Array.from({ length: 40 }, (_, i) => ({
+              mispar_rechev: 10000000 + i,
+              sug_degem: type,
+              tozeret_cd: Number(make),
+              degem_cd: Number(code),
+              shnat_yitzur: Number(year),
+              baalut: i < 30 ? 'פרטי' : 'השכרה',
+            }));
+      await route.fulfill({
+        headers: { 'access-control-allow-origin': '*' },
+        json: { success: true, result: { total: 40, records } },
+      });
+    },
+  );
+  await page.getByRole('button', { name: 'בדיקת מדגם עדכני' }).click();
+  await expect(page.getByRole('status')).toHaveText(/מדגם של 40/);
+  await expect(page.getByText(/פרטי.*75%/)).toBeVisible();
+  await expect(page.getByText(/השכרה.*25%/)).toBeVisible();
+});

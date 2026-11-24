@@ -4,6 +4,8 @@ import CatalogSource from '../../components/CatalogSource.astro';
 import Cohort from '../../components/Cohort.astro';
 import MakeModels from '../../components/MakeModels.astro';
 import ManufacturerPhoto from '../../components/ManufacturerPhoto.astro';
+import ModelStatistics from '../../components/ModelStatistics.astro';
+import ModelOwnership from '../../components/ModelOwnership.astro';
 import '../../styles/catalog.css';
 import {
   catalog,
@@ -14,6 +16,7 @@ import {
   years,
   type Make,
   type Model,
+  type ModelSpecifications,
 } from '../../data/catalog';
 type Props = { make: Make; model?: Model; year?: number };
 export function getStaticPaths() {
@@ -61,6 +64,23 @@ const displacements = [
     rows.flatMap((row) => row.variants.flatMap(([, , cc]) => (cc ? [cc] : []))),
   ),
 ].sort((a, b) => a - b);
+const specDetails = (spec: ModelSpecifications) =>
+  [
+    spec.propulsion,
+    spec.drive ? `הנעה ${spec.drive}` : undefined,
+    spec.power ? `${count.format(spec.power)} כ״ס` : undefined,
+    spec.seats ? `${count.format(spec.seats)} מושבים` : undefined,
+    spec.towBraked != null
+      ? `גרירה עם בלמים ${count.format(spec.towBraked)} ק״ג`
+      : undefined,
+    spec.towUnbraked != null
+      ? `גרירה בלי בלמים ${count.format(spec.towUnbraked)} ק״ג`
+      : undefined,
+    spec.pollution != null ? `דרגת זיהום ${spec.pollution}` : undefined,
+    spec.safety != null ? `רמת אבזור בטיחותי ${spec.safety}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 ---
 
 <Site title={title}>
@@ -133,6 +153,7 @@ const displacements = [
     )}
   </section>
   {!model && <MakeModels {make} {makeUrl} />}
+  {model && <ModelStatistics {rows} total={sum.active} />}
   {!year && (
     <section class="panel catalog-data">
       <h2>כלי רכב לפי שנת ייצור</h2>
@@ -207,14 +228,21 @@ const displacements = [
                 <td>
                   {row.variants.length ? (
                     <ul>
-                      {row.variants.map(([trim, fuel, cc, automatic]) => (
-                        <li>
-                          <bdi>{trim ?? 'גימור לא ידוע'}</bdi> ·{' '}
-                          {fuel ?? 'דלק לא ידוע'}
-                          {cc ? ` · ${cc} סמ״ק` : ''}
-                          {Number(automatic) === 1 ? ' · גיר אוטומטי' : ''}
-                        </li>
-                      ))}
+                      {row.variants.map(
+                        ([trim, fuel, cc, automatic, extra]) => (
+                          <li>
+                            <bdi>{trim ?? 'גימור לא ידוע'}</bdi> ·{' '}
+                            {fuel ?? 'דלק לא ידוע'}
+                            {cc ? ` · ${cc} סמ״ק` : ''}
+                            {Number(automatic) === 1 ? ' · גיר אוטומטי' : ''}
+                            {extra && (
+                              <small class="model-spec-details">
+                                {specDetails(extra)}
+                              </small>
+                            )}
+                          </li>
+                        ),
+                      )}
                     </ul>
                   ) : (
                     'מפרט לא זמין'
@@ -263,6 +291,7 @@ const displacements = [
     </section>
   )}
   {model && year && <Cohort id={`${make.id}/${model.id}/${year}`} />}
+  {model && <ModelOwnership {model} path={`${make.id}/${model.id}`} {year} />}
   {model && !year && make.models.length > 1 && (
     <section class="panel catalog-directory">
       <h2>דגמים נוספים של {make.name}</h2>

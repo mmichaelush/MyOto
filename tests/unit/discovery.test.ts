@@ -146,7 +146,7 @@ test('keeps a failed namespace visible alongside the result from the other one',
   expect(result.reports[1].sources.cme?.httpStatus).toBe(503);
 });
 
-test('comparison fetches the 13 sources used for specifications and recall status', async () => {
+test('comparison fetches the full registration history and model enrichment', async () => {
   const fetcher = vi.fn<typeof fetch>(async (input) => {
     const id = new URL(String(input)).searchParams.get('resource_id');
     return reply(
@@ -169,8 +169,16 @@ test('comparison fetches the 13 sources used for specifications and recall statu
     '12345678',
     signal(),
   );
-  expect(fetcher).toHaveBeenCalledTimes(13);
+  expect(fetcher).toHaveBeenCalledTimes(23);
   expect(report.recalls).toHaveLength(1);
-  expect(report.sources.campaigns).toBeUndefined();
-  expect(report.sources.modelDetails).toBeUndefined();
+  for (const key of [
+    'campaigns',
+    'modelDetails',
+    'modelCounts',
+    'history_2',
+    'disabledPermit',
+    'anchors',
+  ] as const)
+    expect(report.sources[key]).toBeDefined();
+  expect(report.sources.cme).toBeUndefined();
 });

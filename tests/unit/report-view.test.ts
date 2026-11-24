@@ -99,7 +99,7 @@ test('shows history by plate separately when a non-private registration cannot v
   const history = view.additional.find(
     (section) => section.id === 'history-by-plate',
   );
-  expect(history?.note).toContain('ההתאמה לרכב הנוכחי לא אומתה');
+  expect(history?.note).toContain('ללא מזהה משותף');
   expect(
     history?.groups.flat().find((row) => row.id === 'kilometer_test_aharon')
       ?.text,

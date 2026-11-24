@@ -1,8 +1,6 @@
-import { resources } from '../data/sources';
+import { modelFilter, resources } from '../data/sources';
 import type { Reply, Row, Scalar } from '../data/types';
 import {
-  dateLabel,
-  dateOrder,
   displayValue,
   fieldLabels,
   expiredDays,
@@ -38,11 +36,13 @@ export function sourceDate(value?: string) {
 export const categories = {
   identity: { title: 'פרטי הרכב', icon: 'car-front' },
   registration: { title: 'רישוי ובעלות', icon: 'clipboard-check' },
+  market: { title: 'יבוא ומחיר', icon: 'wallet' },
   engine: { title: 'מנוע ודלק', icon: 'settings' },
   drivetrain: { title: 'גיר והנעה', icon: 'cog' },
   dimensions: { title: 'מידות, משקל וגרירה', icon: 'ruler' },
   wheels: { title: 'צמיגים וחישוקים', icon: 'circle-gauge' },
-  safety: { title: 'בטיחות ואבזור', icon: 'shield-check' },
+  safety: { title: 'מערכות בטיחות ומיגון', icon: 'shield-check' },
+  comfort: { title: 'אבזור ונוחות', icon: 'armchair' },
   emissions: { title: 'זיהום וסביבה', icon: 'leaf' },
   equipment: { title: 'נתוני צמ״ה', icon: 'construction' },
   bus: { title: 'תחבורה ציבורית', icon: 'bus-front' },
@@ -68,6 +68,7 @@ export type DataRow = {
   warning?: string;
   help?: string;
   differences?: { source: string; text: string }[];
+  scope?: 'model';
 };
 export type DataSection = {
   id: string;
@@ -91,7 +92,7 @@ const categoryMap: Record<string, Category> = {
   'מנוע והנעה': 'engine',
   'מידות ומשקלים': 'dimensions',
   'צמיגים וחישוקים': 'wheels',
-  'אבזור ונוחות': 'safety',
+  'אבזור ונוחות': 'comfort',
   'נתוני צמ"ה ורכב כבד': 'equipment',
   'תחבורה ציבורית וצי רכב': 'bus',
   'בטיחות פסיבית': 'safety',
@@ -105,6 +106,11 @@ const rules: Record<string, Partial<DisplayRule>> = {
   degem_nm: { label: 'דגם במרשם', order: 30 },
   shnat_yitzur: { order: 40 },
   tzeva_rechev: { order: 50 },
+  sug_yevu: { category: 'market', order: 10 },
+  shem_yevuan: { category: 'market', order: 20 },
+  mehir: { category: 'market', order: 30 },
+  horaat_rishum: { category: 'registration', order: 50 },
+  sug_tkina_nm: { category: 'registration', order: 60 },
   misgeret: {
     keys: ['misgeret', 'mispar_shilda', 'shilda'],
     label: 'מספר שלדה',
@@ -116,9 +122,10 @@ const rules: Record<string, Partial<DisplayRule>> = {
   },
   sug_rechev_EU_cd: {
     label: 'סיווג אירופי (EU)',
+    category: 'registration',
     help: 'קטגוריית כלי הרכב כפי שדווחה במקור.',
   },
-  tkina_EU: { label: 'תקינה אירופית' },
+  tkina_EU: { label: 'תקינה אירופית', category: 'registration' },
   tokef_dt: { label: 'תוקף רישוי', order: 10, icon: 'clipboard-check' },
   tokef_date: {
     label: 'תוקף רישום צמ״ה',
@@ -127,6 +134,16 @@ const rules: Record<string, Partial<DisplayRule>> = {
     icon: 'clipboard-check',
   },
   baalut: { label: 'בעלות רשומה', order: 20, icon: 'users' },
+  mkoriut_nm: { category: 'registration', order: 21 },
+  mivchan_acharon_dt: { label: 'מבחן רישוי אחרון', order: 24 },
+  moed_aliya_lakvish: { label: 'עלייה לכביש', order: 25 },
+  rishum_rishon_dt: { label: 'רישום ראשון', order: 26 },
+  rishum_date: { category: 'registration', order: 27 },
+  bitul_dt: {
+    keys: ['bitul_dt', 'taarich_bitzul'],
+    order: 28,
+    icon: 'calendar-days',
+  },
   kilometer_test_aharon: {
     label: 'קריאת נסועה אחרונה',
     order: 30,
@@ -146,8 +163,17 @@ const rules: Record<string, Partial<DisplayRule>> = {
     order: 10,
     unit: 'סמ״ק',
   },
-  koah_sus: { label: 'הספק מנוע', order: 20, unit: 'כ״ס' },
-  sug_delek_nm: { label: 'סוג דלק', order: 30 },
+  koah_sus: {
+    keys: ['koah_sus', 'hespek'],
+    label: 'הספק מנוע',
+    order: 20,
+    unit: 'כ״ס',
+  },
+  sug_delek_nm: {
+    keys: ['sug_delek_nm', 'delek_nm'],
+    label: 'סוג דלק',
+    order: 30,
+  },
   PropulsionType_nm: { label: 'הנעה לפי נתוני הצי', category: 'drivetrain' },
   automatic_ind: {
     label: 'תיבת הילוכים אוטומטית',
@@ -155,8 +181,10 @@ const rules: Record<string, Partial<DisplayRule>> = {
     order: 10,
   },
   ramat_gimur: { category: 'identity', order: 55 },
+  matzlemat_reverse_ind: { category: 'safety' },
   shinui_zmig_ind: { category: 'wheels' },
   hanaa_nm: { label: 'תצורת הנעה', category: 'drivetrain', order: 20 },
+  technologiat_hanaa_nm: { category: 'drivetrain', order: 30 },
   grira_nm: {
     label: 'וו גרירה',
     category: 'dimensions',
@@ -305,6 +333,62 @@ function fieldRow(
   };
 }
 
+function catalogRows(report: Report) {
+  const base = report.identity && report.sources[report.identity]?.rows[0];
+  const key = base && modelFilter(base);
+  if (!base || !key) return [];
+  const variants = (report.sources.modelDetails?.rows ?? []).filter((row) =>
+    Object.entries(key).every(
+      ([field, value]) => String(row[field]) === String(value),
+    ),
+  );
+  const trim = String(base.ramat_gimur ?? '')
+    .normalize('NFKC')
+    .trim()
+    .toUpperCase();
+  const exact = trim
+    ? variants.filter(
+        (row) =>
+          String(row.ramat_gimur ?? '')
+            .normalize('NFKC')
+            .trim()
+            .toUpperCase() === trim,
+      )
+    : [];
+  return exact.length ? exact : variants;
+}
+
+function catalogField(rule: DisplayRule, variants: Row[]): DataRow | undefined {
+  if (
+    rule.category === 'registration' ||
+    ['misgeret', 'mispar_manoa', 'tzeva_rechev'].includes(rule.id)
+  )
+    return;
+  const readings = variants.map((variant) => {
+    const value = rule.keys
+      .map((key) => variant[key])
+      .find((raw) => raw !== undefined && raw !== null && raw !== '');
+    return value === undefined ? undefined : textFor(rule.id, value, rule.unit);
+  });
+  const values = [
+    ...new Set(
+      readings.filter((value): value is string => value !== undefined),
+    ),
+  ];
+  if (!values.length) return;
+  return {
+    id: rule.id,
+    label: rule.label,
+    text: values.join(' · '),
+    icon: rule.icon ?? fieldIcon(rule.id, categories[rule.category].icon),
+    scope: 'model',
+    help:
+      values.length > 1 || readings.some((value) => value === undefined)
+        ? 'מפרט הדגם כולל כמה גרסאות או רשומות חסרות. יש לבדוק את הנתון ברישיון הרכב.'
+        : 'מפרט לפי קוד דגם ושנתון במשרד התחבורה. הנתון המחייב לרכב הוא זה שברישיון.',
+  };
+}
+
 const defaultOrder = [
   'identity',
   'registration',
@@ -313,7 +397,9 @@ const defaultOrder = [
   'dimensions',
   'wheels',
   'safety',
+  'comfort',
   'emissions',
+  'market',
   'bus',
   'truck',
   'equipment',
@@ -330,9 +416,10 @@ export const baseSections = (
   today?: Date,
 ) => {
   const order = [...new Set([...(priority[kind] ?? []), ...defaultOrder])];
+  const variants = catalogRows(report);
   const rows = fieldSchema.flatMap((rule) => {
     if (rule.kinds && !rule.kinds.includes(kind)) return [];
-    const row = fieldRow(rule, report, today);
+    const row = fieldRow(rule, report, today) ?? catalogField(rule, variants);
     return row
       ? [
           {
@@ -369,20 +456,22 @@ function supplement(
     icon,
     groups: rows
       .map((row) =>
-        Object.entries(row).flatMap(([key, value]) => {
-          const label =
-            map[key] ?? (allowMapped ? fieldLabels[key]?.label : undefined);
-          return label && value !== null && value !== ''
-            ? [
-                {
-                  id: key,
-                  label,
-                  text: displayValue(key, value),
-                  icon: fieldIcon(key, icon),
-                },
-              ]
-            : [];
-        }),
+        Object.entries(row)
+          .flatMap(([key, value]) => {
+            const label =
+              map[key] ?? (allowMapped ? fieldLabels[key]?.label : undefined);
+            return label && value !== null && value !== ''
+              ? [
+                  {
+                    id: key,
+                    label,
+                    text: displayValue(key, value),
+                    icon: fieldIcon(key, icon),
+                  },
+                ]
+              : [];
+          })
+          .sort((a, b) => a.label.localeCompare(b.label, 'he')),
       )
       .filter((group) => group.length),
   };
@@ -399,18 +488,6 @@ const supplements = [
       mispar_rechavim_le_pailim: 'לא פעילים',
     },
     false,
-  ],
-  [
-    'modelDetails',
-    'מפרט דגם מהקטלוג',
-    'settings',
-    {
-      degem_cd: 'קוד דגם',
-      ramat_gimur: 'גימור',
-      delek_nm: 'דלק',
-      nefah_manoa: 'נפח מנוע',
-    },
-    true,
   ],
   [
     'importers',
@@ -463,8 +540,6 @@ export function vehicleViewModel(report: Report, today = new Date()) {
     alerts.push(
       'בחלק מהמקורות מופיעים פרטי רכב אחר באותו מספר. הנתונים נשמרו בנפרד.',
     );
-  if (report.unverified.length)
-    alerts.push('רישומים שהשיוך שלהם לרכב הזה לא אומת מוצגים בנפרד.');
   if (Object.values(report.sources).some((reply) => reply.issue))
     alerts.push('הדוח חלקי. לפחות מאגר אחד לא היה זמין או מסר מידע חסר.');
   if (report.sources.safetyDiscount?.rows.length)
@@ -473,17 +548,6 @@ export function vehicleViewModel(report: Report, today = new Date()) {
     );
   if (report.sources.anchors?.rows.length)
     alerts.push('הלוחית מופיעה במאגר חובת התקנת נקודות עיגון.');
-  const events = [
-    [report.fields.rishum_rishon_dt?.chosen, 'רישום ראשון'],
-    [report.fields.mivchan_acharon_dt?.chosen, 'מבחן רישוי אחרון'],
-    [
-      report.fields.bitul_dt?.chosen ?? report.fields.taarich_bitzul?.chosen,
-      'ביטול רישום',
-    ],
-  ] as const;
-  const timeline = events
-    .flatMap(([value, label]) => (value ? [{ value, label }] : []))
-    .sort((a, b) => dateOrder(b.value.value) - dateOrder(a.value.value));
   const tables: DataTable[] = [];
   // Without trader IDs, count distinct reported periods, not people or businesses.
   const dealerPeriods = new Set(
@@ -511,15 +575,7 @@ export function vehicleViewModel(report: Report, today = new Date()) {
         ownershipDate(row.baalut_dt ?? null),
         String(row.baalut ?? 'לא זמין'),
       ]),
-      note: `${report.ownership.length} רישומים לפי לוחית. כשהמאגר מוסר תקופה בלבד, מוצג טווח החודשים. השיוך לרכב הנוכחי אינו מאומת.`,
-    });
-  if (timeline.length)
-    tables.push({
-      id: 'registration-timeline',
-      title: 'מועדים ברישוי',
-      icon: 'history',
-      labels: ['מועד', 'אירוע'],
-      rows: timeline.map(({ value, label }) => [dateLabel(value.value), label]),
+      note: `${report.ownership.length} רישומי בעלות לפי מספר הלוחית. מאגר הבעלות אינו מוסר מספר שלדה. כשנמסרה תקופה, מוצג טווח החודשים.`,
     });
   const additional = supplements
     .flatMap(([id, title, icon, map, allowMapped]) => {
@@ -545,14 +601,22 @@ export function vehicleViewModel(report: Report, today = new Date()) {
     if (section.groups.length)
       additional.unshift({
         ...section,
-        note: 'המקור משויך ללוחית. ההתאמה לרכב הנוכחי לא אומתה. קריאת הנסועה מופיעה ללא תאריך המדידה.',
+        note: 'מאגר הנסועה מוסר רישום לפי מספר הלוחית, ללא מזהה משותף שמאשר שזה הרכב שבדוח. מועד קריאת הנסועה לא נמסר.',
       });
   }
   const primary = report.identity ? report.sources[report.identity] : undefined;
   const shown = new Set(highlights.map(({ id }) => id));
   const sections = baseSections(report, kind).flatMap((section) => {
     const groups = section.groups
-      .map((group) => group.filter(({ id }) => !shown.has(id)))
+      .map((group) =>
+        group.filter(
+          ({ id }) =>
+            id === 'tokef_dt' ||
+            id === 'tokef_date' ||
+            id === 'baalut' ||
+            !shown.has(id),
+        ),
+      )
       .filter((group) => group.length);
     return groups.length ? [{ ...section, groups }] : [];
   });

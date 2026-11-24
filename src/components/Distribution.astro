@@ -1,0 +1,36 @@
+---
+import type { Distribution } from '../domain/model-distributions';
+interface Props {
+  label: string;
+  values: Distribution;
+  total: number;
+}
+const { label, values, total } = Astro.props;
+const percent = new Intl.NumberFormat('he-IL', {
+  style: 'percent',
+  maximumFractionDigits: 1,
+});
+const count = new Intl.NumberFormat('he-IL');
+---
+
+{total > 0 && values.length > 0 && (
+  <section class="datum">
+    <h3>{label}</h3>
+    <ul class="distributions">
+      {values.map(([name, n]) => (
+        <li>
+          <span>
+            {name} · <bdi>{percent.format(n / total)}</bdi>{' '}
+            <small>({count.format(n)})</small>
+          </span>
+          <meter
+            aria-label={`${name} מתוך ${count.format(total)}`}
+            min="0"
+            max={total}
+            value={n}
+          ></meter>
+        </li>
+      ))}
+    </ul>
+  </section>
+)}

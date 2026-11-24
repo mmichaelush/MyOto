@@ -25,12 +25,6 @@ const supplementalSources = [
   'busFleet',
   'anchors',
 ] as const;
-const comparisonSources = [
-  ...discoverySources,
-  'recall',
-  'private_cars_2',
-  'history_1',
-] as const;
 export const registrationRequestBudget = 28;
 
 export type Discovery = {
@@ -63,15 +57,7 @@ export class VehicleEngine {
   }
 
   comparison(input: string, signal: AbortSignal) {
-    return this.lookup(
-      input,
-      'registration',
-      signal,
-      new RequestBudget(registrationRequestBudget),
-      undefined,
-      false,
-      'comparison',
-    );
+    return this.search(input, 'registration', signal, undefined, false);
   }
 
   async discover(
@@ -129,7 +115,6 @@ export class VehicleEngine {
         }
       },
       false,
-      'full',
       true,
     );
     const [equipment, registration] = await Promise.all([
@@ -163,7 +148,6 @@ export class VehicleEngine {
     budget: RequestBudget,
     update?: (report: Report) => void,
     legacyFallback = false,
-    mode: 'full' | 'comparison' = 'full',
     previewRecall = false,
   ): Promise<Report> {
     const plate = parsePlate(input);
@@ -204,8 +188,6 @@ export class VehicleEngine {
     };
     if (domain === 'equipment') {
       await query('cme');
-    } else if (mode === 'comparison') {
-      await Promise.all(comparisonSources.map((key) => query(key)));
     } else {
       const identity = new Promise<SourceId | undefined>((resolve) => {
         selectIdentity = resolve;

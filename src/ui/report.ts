@@ -22,6 +22,8 @@ function dataRow(data: DataRow, highlight = false) {
   if (data.icon) mark(label, data.icon);
   const value = element('dd');
   value.append(element('bdi', data.text));
+  if (data.scope === 'model')
+    value.append(element('small', 'לפי מפרט הדגם', 'muted data-scope'));
   if (data.warning)
     value.append(element('small', data.warning, 'field-warning'));
   if (data.help || data.differences?.length) {
@@ -60,7 +62,7 @@ function dataSection(data: DataSection) {
   return section;
 }
 
-function dataTable(data: DataTable) {
+export function dataTable(data: DataTable) {
   const section = element('section', undefined, 'data-section');
   section.dataset.sectionId = data.id;
   section.append(mark(element('h3', data.title), data.icon));
@@ -99,12 +101,19 @@ export function sourceDetails(report: Report, checked: SourceReplies = {}) {
   );
   for (const [id, reply] of sorted) {
     const key = id as SourceId;
+    if (
+      key === 'recall' &&
+      !report.identity &&
+      !reply.rows.length &&
+      !reply.issue
+    )
+      continue;
     const resource = resources[key];
     const item = element('details', undefined, 'raw-source');
     const match = report.separated.includes(key)
       ? ' · נמצאו פרטי רכב אחר'
       : report.unverified.includes(key)
-        ? ' · השיוך לרכב לא אומת'
+        ? ' · נמצאו רשומות לפי לוחית, חסר אימות זהות'
         : '';
     const summary = element(
       'summary',
@@ -118,6 +127,10 @@ export function sourceDetails(report: Report, checked: SourceReplies = {}) {
         `${update ? 'עודכן ' + update : 'נשלף ' + fetched} · `,
       );
     information.append(link('למאגר הרשמי', resource.url));
+    if (report.unverified.includes(key))
+      information.append(
+        ' · המקור לא סיפק מספיק מזהים תואמים כדי לשייך את הרשומה לרכב הזה.',
+      );
     if (key === 'recall' && !reply.rows.length && !reply.issue)
       information.append(
         ' · המאגר כולל הגבלות שנרשמו לאחר שלא בוצע ריקול. אפשר לברר קריאות חדשות מול היבואן.',

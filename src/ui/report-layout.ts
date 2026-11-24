@@ -1,6 +1,6 @@
 ﻿import { button, element } from './dom';
 import { logFailure } from './diagnostics';
-import { mark } from './icons';
+import { icon } from './icons';
 
 const storageKey = 'myoto-report-order-v2';
 const legacyKey = 'myoto-report-order';
@@ -113,6 +113,8 @@ export function arrangeReport(grid: HTMLElement) {
 
   let dragging: HTMLElement | undefined;
   let destination: HTMLElement | undefined;
+  let pointer:
+    { id: number; section: HTMLElement; x: number; y: number } | undefined;
   function highlight(target?: HTMLElement) {
     if (target === destination) return;
     destination?.classList.remove('section-drop-target');
@@ -122,6 +124,7 @@ export function arrangeReport(grid: HTMLElement) {
   function clearDrag() {
     dragging?.classList.remove('section-dragging');
     dragging = undefined;
+    pointer = undefined;
     highlight();
   }
   function place(section: HTMLElement, target: HTMLElement) {
@@ -138,50 +141,44 @@ export function arrangeReport(grid: HTMLElement) {
     toolbar.hidden = !enabled;
     toggle.textContent = enabled ? 'סיום סידור' : 'סידור הדוח';
     toggle.setAttribute('aria-pressed', String(enabled));
-    handles.forEach(({ container, handle }) => {
+    controls.forEach((container) => {
       container.hidden = !enabled;
-      handle.draggable = enabled;
     });
     if (!enabled) clearDrag();
   });
   toggle.className = 'report-order-toggle';
   toggle.setAttribute('aria-pressed', 'false');
-  const handles = sections.map((section) => {
+  const controls = sections.map((section) => {
     const container = element('div', undefined, 'section-order');
     container.hidden = true;
-    const handle = mark(element('span', 'גרירה', 'drag-handle'), 'grip');
-    handle.setAttribute('aria-hidden', 'true');
-    const start = () => {
-      dragging = section;
-      section.classList.add('section-dragging');
-    };
-    handle.addEventListener('dragstart', (event) => {
-      start();
-      if (event.dataTransfer) {
-        event.dataTransfer.setData('text/plain', id(section));
-        event.dataTransfer.effectAllowed = 'move';
-      }
-    });
-    handle.addEventListener('dragend', clearDrag);
-    section.addEventListener('dragover', (event) => {
-      if (!dragging || dragging === section) return;
-      event.preventDefault();
-      highlight(section);
-    });
-    section.addEventListener('drop', (event) => {
-      if (!dragging || dragging === section) return;
-      event.preventDefault();
-      place(dragging, section);
-      clearDrag();
-    });
+    const handle = section.querySelector('h3')!;
+    handle.classList.add('drag-handle');
+    handle.title = 'גרירה לשינוי סדר';
+    const grip = icon('grip');
+    grip.classList.add('section-grip');
+    handle.append(grip);
     handle.addEventListener('pointerdown', (event) => {
-      if (event.pointerType === 'mouse' || !event.isPrimary) return;
+      if (!event.isPrimary || event.button !== 0 || pointer) return;
       event.preventDefault();
       handle.setPointerCapture(event.pointerId);
-      start();
+      pointer = {
+        id: event.pointerId,
+        section,
+        x: event.clientX,
+        y: event.clientY,
+      };
     });
     handle.addEventListener('pointermove', (event) => {
-      if (dragging !== section || event.pointerType === 'mouse') return;
+      if (pointer?.section !== section || pointer.id !== event.pointerId)
+        return;
+      if (!dragging) {
+        if (
+          Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) < 5
+        )
+          return;
+        dragging = section;
+        section.classList.add('section-dragging');
+      }
       const target = document
         .elementFromPoint(event.clientX, event.clientY)
         ?.closest<HTMLElement>('[data-section-id]');
@@ -194,11 +191,14 @@ export function arrangeReport(grid: HTMLElement) {
       if (event.clientY > innerHeight - 55) window.scrollBy(0, 16);
     });
     handle.addEventListener('pointerup', (event) => {
-      if (event.pointerType === 'mouse') return;
+      if (pointer?.id !== event.pointerId) return;
       if (dragging === section && destination) place(section, destination);
       clearDrag();
     });
     handle.addEventListener('pointercancel', clearDrag);
+    handle.addEventListener('lostpointercapture', (event) => {
+      if (pointer?.id === event.pointerId) clearDrag();
+    });
     const move = (direction: -1 | 1, focus: HTMLElement) => {
       const neighbor =
         direction < 0
@@ -211,9 +211,9 @@ export function arrangeReport(grid: HTMLElement) {
     const later = button('↓', () => move(1, later));
     earlier.setAttribute('aria-label', 'הקדמת ' + title(section));
     later.setAttribute('aria-label', 'הזזת ' + title(section) + ' למטה');
-    container.append(handle, earlier, later);
+    container.append(earlier, later);
     section.prepend(container);
-    return { container, handle };
+    return container;
   });
   return toggle;
 }

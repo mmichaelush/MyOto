@@ -2,6 +2,7 @@
 import { cohorts, fetchedAt } from '../data/cohorts';
 import { count } from '../data/catalog';
 import { resources } from '../data/sources';
+import Distribution from './Distribution.astro';
 const { id } = Astro.props;
 const stat = cohorts[id];
 const distributions = stat
@@ -25,22 +26,7 @@ const distributions = stat
     </p>
     <div class="grid-data">
       {distributions.map(([label, values]) => (
-        <section class="datum">
-          <h3>{label}</h3>
-          <ul class="distributions">
-            {values.map(([name, n]) => (
-              <li>
-                {name} · {n}
-                <meter
-                  aria-label={`${name} מתוך ${stat.n}`}
-                  min="0"
-                  max={stat.n}
-                  value={n}
-                ></meter>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <Distribution {label} {values} total={stat.n} />
       ))}
     </div>
     <h3>נסועה בטסט האחרון שדווח</h3>

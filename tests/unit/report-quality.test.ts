@@ -51,7 +51,7 @@ test('repeated dealer rows in the same period do not count as distinct owners', 
     view.sections
       .flatMap((section) => section.groups.flat())
       .some((row) => row.id === 'tokef_dt'),
-  ).toBe(false);
+  ).toBe(true);
 });
 
 test('an independent registry date never dates the mileage reading', () => {
@@ -78,8 +78,12 @@ test('an independent registry date never dates the mileage reading', () => {
   expect(reading?.help).toContain('ללא תאריך המדידה');
   expect(reading?.warning).toBeUndefined();
   expect(
-    view.tables.find((table) => table.id === 'registration-timeline')?.rows,
-  ).toContainEqual(['04/06/2026', 'מבחן רישוי אחרון']);
+    view.sections
+      .find((section) => section.id === 'registration')
+      ?.groups.flat(),
+  ).toContainEqual(
+    expect.objectContaining({ text: '04/06/2026', label: 'מבחן רישוי אחרון' }),
+  );
 
   const changed = [
     ['11234567', registration, history],
@@ -126,4 +130,49 @@ test('an independent registry date never dates the mileage reading', () => {
       ).toBe(false);
     }
   }
+});
+
+test('puts eligible model towing specifications in the dimensions card without treating them as license values', () => {
+  const key = {
+    sug_degem: 'P',
+    tozeret_cd: 839,
+    degem_cd: 218,
+    shnat_yitzur: 2021,
+  };
+  const report = buildReport(
+    '11234567',
+    'registration',
+    {
+      private_cars_1: source({
+        ...key,
+        ramat_gimur: 'STYLE',
+        mishkal_kolel: 1800,
+      }),
+      modelDetails: source(
+        {
+          ...key,
+          ramat_gimur: 'STYLE',
+          kosher_grira_im_blamim: 750,
+          kosher_grira_bli_blamim: 0,
+        },
+        { ...key, ramat_gimur: 'GLI', kosher_grira_im_blamim: 1250 },
+        {
+          ...key,
+          degem_cd: 219,
+          ramat_gimur: 'STYLE',
+          kosher_grira_im_blamim: 1500,
+        },
+      ),
+    },
+    true,
+  );
+  const view = vehicleViewModel(report);
+  const dimensions = view.sections
+    .find((section) => section.id === 'dimensions')
+    ?.groups.flat();
+  expect(dimensions?.map(({ id, text, scope }) => [id, text, scope])).toEqual([
+    ['mishkal_kolel', '1,800 ק״ג', undefined],
+    ['kosher_grira_im_blamim', '750 ק״ג', 'model'],
+    ['kosher_grira_bli_blamim', '0 ק״ג', 'model'],
+  ]);
 });

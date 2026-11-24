@@ -132,6 +132,14 @@ async function fixtures(
           WEBSITE: 'javascript:alert(1)',
         });
       }
+      if (source === resources.modelDetails.id && query.degem_cd === 218) {
+        records.push({
+          ...query,
+          ramat_gimur: 'STYLE',
+          kosher_grira_im_blamim: 750,
+          kosher_grira_bli_blamim: 0,
+        });
+      }
       await route.fulfill({
         headers: { 'access-control-allow-origin': '*' },
         json: { success: true, result: { records } },
@@ -154,6 +162,19 @@ for (const width of [390, 1366]) {
     await expect(
       page.getByRole('heading', { name: 'היסטוריית בעלויות' }),
     ).toBeVisible({ timeout: 15000 });
+    await expect(
+      page
+        .locator('[data-section-id="registration"]')
+        .getByText('מבחן רישוי אחרון'),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('[data-section-id="dimensions"]')
+        .getByText('כושר גרירה עם בלמים'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'מועדים ברישוי' }),
+    ).toHaveCount(0);
     const yearLink = page.getByRole('link', { name: 'לדף דגם ושנתון' });
     await expect(yearLink).toHaveAttribute('href', /toyota\/corolla\/2021\/$/);
     expect((await yearLink.boundingBox())?.height).toBe(
@@ -361,6 +382,19 @@ test('comparison keeps plate-based recall and reports missing Clipboard support'
   await expect(page.locator('#comparison-status')).toHaveText(
     'אפשר להעתיק את קישור ההשוואה משורת הכתובת.',
   );
+  await page.goto(`/MyOto/compare/?a=${missing}&b=${registration}`);
+  const empty = page.locator('.compare-card').first();
+  await expect(empty.getByRole('heading')).toHaveText('רכב לא נמצא');
+  await expect(empty.getByText('מאגר הגבלות ריקול')).toHaveCount(0);
+  await expect(
+    page.getByRole('row', { name: /כושר גרירה עם בלמים.*750/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('rowheader', { name: 'כושר גרירה עם בלמים' }),
+  ).toHaveCSS('display', 'table-cell');
+  await expect(
+    page.getByRole('region', { name: 'היסטוריית בעלויות' }),
+  ).toBeVisible();
 });
 
 test('report controls keep their location and section order survives reload', async ({
@@ -400,13 +434,30 @@ test('report controls keep their location and section order survives reload', as
   await expect(
     page.locator('#vehicle-details > section').nth(1).locator('h3'),
   ).toHaveText(title);
-  await page.getByRole('button', { name: 'סידור הדוח' }).click();
-  await page
+  await page.setViewportSize({ width: 1280, height: 920 });
+  await expect(
+    page.getByRole('button', { name: 'סידור הדוח' }),
+  ).toHaveAttribute('aria-pressed', 'false');
+  const handle = page
     .locator('#vehicle-details > section')
     .nth(1)
-    .locator('.drag-handle')
-    .dragTo(section.locator('h3'));
+    .locator('.drag-handle');
+  await handle.scrollIntoViewIfNeeded();
+  const source = (await handle.boundingBox())!;
+  const target = (await section.locator('h3').boundingBox())!;
+  await page.mouse.move(
+    source.x + source.width / 2,
+    source.y + source.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    target.x + target.width / 2,
+    target.y + target.height / 2,
+    { steps: 8 },
+  );
+  await page.mouse.up();
   await expect(section.locator('h3')).toHaveText(title);
+  await page.getByRole('button', { name: 'סידור הדוח' }).click();
   await page.getByRole('button', { name: 'שחזור סדר ברירת המחדל' }).click();
   await expect(section).toHaveAttribute('data-section-id', 'identity');
   expect(
@@ -427,7 +478,9 @@ test('legacy local readings are removed and do not trigger mileage warnings', as
   await page.goto('/MyOto/');
   await page.getByLabel('מספר רישוי או צמ״ה').fill(registration);
   await page.getByLabel('מספר רישוי או צמ״ה').press('Enter');
-  await expect(page.getByText('תוקף הרישיון פג לפני 22 ימים')).toBeVisible();
+  await expect(
+    page.locator('.report-metrics').getByText('תוקף הרישיון פג לפני 22 ימים'),
+  ).toBeVisible();
   await expect(
     page.getByText('קריאת נסועה אחרונה', { exact: true }),
   ).toBeVisible();
@@ -491,7 +544,9 @@ test('moves a card by touch and keeps sections that were absent from saved prefe
   await expect(
     page.locator('[data-section-id="ownership-history"]'),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'סידור הדוח' }).click();
+  await expect(
+    page.getByRole('button', { name: 'סידור הדוח' }),
+  ).toHaveAttribute('aria-pressed', 'false');
   const grip = cards.first().locator('.drag-handle');
   await grip.scrollIntoViewIfNeeded();
   const origin = (await grip.boundingBox())!;
