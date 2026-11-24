@@ -1,0 +1,8 @@
+import { defineConfig } from 'astro/config';
+
+export default defineConfig({
+  site: 'https://mmichaelush.github.io',
+  base: process.env.MYOTO_BASE ?? '/MyOto',
+  trailingSlash: 'always',
+  output: 'static',
+});
