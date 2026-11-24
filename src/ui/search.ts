@@ -338,6 +338,60 @@ function showResult(report: Report, checked?: SourceReplies) {
   renderSaved();
 }
 
+function resultChooser(matches: Report[], waiting = false) {
+  const chooser = element('section', undefined, 'panel result-chooser');
+  chooser.append(
+    element(
+      'h2',
+      matches.every((report) => report.identity)
+        ? 'נמצאו שני כלים עם אותו מספר'
+        : 'נמצאו נתוני צמ״ה וריקול באותו מספר',
+    ),
+    element(
+      'p',
+      waiting ? 'פרטי ההתאמות עדיין נטענים.' : 'בחרו איזה דוח לפתוח.',
+    ),
+  );
+  const list = element('div', undefined, 'choice-grid');
+  for (const report of matches) {
+    const item = mark(
+      button('', () => {
+        navigateTo(address(report));
+        displayedQuery = location.search;
+        showResult(report);
+        const heading = output.querySelector<HTMLElement>(
+          '.vehicle-heading h2, .recall-panel h2',
+        );
+        if (heading) {
+          heading.tabIndex = -1;
+          heading.focus({ preventScroll: true });
+        }
+      }),
+      report.domain === 'equipment' ? 'construction' : 'car-front',
+    );
+    item.disabled = waiting;
+    const text = element('span');
+    text.append(
+      element(
+        'strong',
+        report.domain === 'equipment'
+          ? 'צמ״ה'
+          : report.identity
+            ? 'רכב ברישוי רגיל'
+            : 'ריקול לפי לוחית',
+      ),
+      element(
+        'bdi',
+        report.identity ? vehicleName(report) : formatPlate(report.plate),
+      ),
+    );
+    item.append(text);
+    list.append(item);
+  }
+  chooser.append(list);
+  return chooser;
+}
+
 async function search(plate: string, domain: SearchMode, navigate: boolean) {
   controller?.abort();
   const request = new AbortController();
@@ -364,7 +418,19 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
     };
     const discovery =
       domain === 'auto'
-        ? await engine.discover(plate, request.signal, progress)
+        ? await engine.discover(plate, request.signal, (preview) => {
+            if (request.signal.aborted) return;
+            if (preview.kind === 'registration') {
+              progress(preview.report);
+            } else {
+              message.textContent = 'התקבלו פרטים ראשונים. הבדיקה נמשכת…';
+              output.replaceChildren(
+                preview.kind === 'collision'
+                  ? resultChooser(preview.reports, true)
+                  : renderRecall(preview.report, true),
+              );
+            }
+          })
         : undefined;
     const reports = discovery?.reports ?? [
       await engine.search(
@@ -393,53 +459,7 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
     const incomplete =
       discovery && Object.values(discovery.checks).includes('partial');
     if (matches.length > 1) {
-      const chooser = element('section', undefined, 'panel result-chooser');
-      chooser.append(
-        element(
-          'h2',
-          matches.every((report) => report.identity)
-            ? 'נמצאו שני כלים עם אותו מספר'
-            : 'נמצאו נתוני צמ״ה וריקול באותו מספר',
-        ),
-        element('p', 'בחרו איזה דוח לפתוח.'),
-      );
-      const list = element('div', undefined, 'choice-grid');
-      for (const report of matches) {
-        const item = mark(
-          button('', () => {
-            navigateTo(address(report));
-            displayedQuery = location.search;
-            showResult(report);
-            const heading = output.querySelector<HTMLElement>(
-              '.vehicle-heading h2, .recall-panel h2',
-            );
-            if (heading) {
-              heading.tabIndex = -1;
-              heading.focus({ preventScroll: true });
-            }
-          }),
-          report.domain === 'equipment' ? 'construction' : 'car-front',
-        );
-        const text = element('span');
-        text.append(
-          element(
-            'strong',
-            report.domain === 'equipment'
-              ? 'צמ״ה'
-              : report.identity
-                ? 'רכב ברישוי רגיל'
-                : 'ריקול לפי לוחית',
-          ),
-          element(
-            'bdi',
-            report.identity ? vehicleName(report) : formatPlate(report.plate),
-          ),
-        );
-        item.append(text);
-        list.append(item);
-      }
-      chooser.append(list);
-      output.replaceChildren(chooser);
+      output.replaceChildren(resultChooser(matches));
       message.textContent = 'בדיקת המספר הסתיימה.';
     } else if (matches[0]) {
       showResult(matches[0], checked);
@@ -449,6 +469,7 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
         : 'הבדיקה הסתיימה.';
     } else if (discovery) {
       const summary = element('section', undefined, 'panel notice');
+      const recallUnavailable = Boolean(registration?.sources.recall?.issue);
       const unavailable =
         discovery.checks.registration === 'partial' &&
         discovery.checks.equipment === 'partial';
@@ -472,6 +493,8 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
               : 'המספר לא נמצא במאגרי הרישוי והצמ״ה שנבדקו. כדאי לבדוק את הספרות ולהזין שוב.',
         ),
       );
+      if (recallUnavailable)
+        summary.append(element('p', 'בדיקת הריקול לפי מספר הרישוי לא הושלמה.'));
       if (incomplete) {
         const failures = failedSources(reports);
         const first = failures[0];
@@ -483,15 +506,14 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
               'muted',
             ),
           );
+      }
+      if (incomplete || recallUnavailable)
         summary.append(
           button('נסה שוב', () => {
             void search(plate, domain, false);
           }),
         );
-      }
       output.replaceChildren(summary);
-      if (registration?.recalls.length)
-        output.append(renderRecall(registration, true));
       if (registration) output.append(sourceDetails(registration, checked));
       message.textContent = '';
     } else {
@@ -501,8 +523,14 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
   } catch (error) {
     if (!request.signal.aborted) {
       logFailure('search', error);
-      message.textContent = 'הבדיקה נכשלה. אפשר לנסות שוב.';
-      output.querySelector('.skeleton')?.remove();
+      message.textContent = 'הבדיקה נכשלה.';
+      const notice = element('section', undefined, 'panel notice');
+      notice.append(
+        button('ניסיון חוזר', () => {
+          void search(plate, domain, false);
+        }),
+      );
+      output.replaceChildren(notice);
     }
   } finally {
     if (!request.signal.aborted) {

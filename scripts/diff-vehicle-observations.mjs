@@ -5,10 +5,11 @@ const period = /^\d{4}-(?:0[1-9]|1[0-2])$/;
 const normalize = (value) =>
   typeof value === 'string' ? value.toUpperCase().replace(/[\s-]/g, '') : '';
 
-function byVehicle(snapshot) {
+export function verifiedEngineRows(rows) {
   const vehicles = new Map();
+  const plates = new Map();
   const ambiguous = new Set();
-  for (const row of snapshot.rows) {
+  for (const row of rows) {
     if (!row || row.verified !== true) continue;
     const vin = normalize(row.vin);
     const plate = normalize(row.plate);
@@ -24,6 +25,12 @@ function byVehicle(snapshot) {
     const existing = vehicles.get(vin);
     if (existing && (existing.engine !== engine || existing.plate !== plate))
       ambiguous.add(vin);
+    const assigned = plates.get(plate);
+    if (assigned && assigned !== vin) {
+      ambiguous.add(vin);
+      ambiguous.add(assigned);
+    }
+    plates.set(plate, vin);
     vehicles.set(vin, { plate, engine });
   }
   for (const vin of ambiguous) vehicles.delete(vin);
@@ -35,14 +42,15 @@ export function compareObservedEngines(before, after) {
     !period.test(before?.month ?? '') ||
     !period.test(after?.month ?? '') ||
     before.month >= after.month ||
+    (before.source && after.source && before.source !== after.source) ||
     !Array.isArray(before.rows) ||
     !Array.isArray(after.rows)
   )
     throw new TypeError(
       'Expected two ordered observation months with verified rows',
     );
-  const earlier = byVehicle(before);
-  const later = byVehicle(after);
+  const earlier = verifiedEngineRows(before.rows);
+  const later = verifiedEngineRows(after.rows);
   const changes = [];
   for (const [vin, next] of later) {
     const old = earlier.get(vin);

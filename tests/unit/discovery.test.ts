@@ -3,6 +3,7 @@ import { CkanClient } from '../../src/data/ckan';
 import {
   VehicleEngine,
   registrationRequestBudget,
+  type DiscoveryPreview,
 } from '../../src/data/engine';
 import { resources } from '../../src/data/sources';
 import type { Row } from '../../src/data/types';
@@ -11,29 +12,42 @@ const signal = () => new AbortController().signal;
 const reply = (records: Row[]) =>
   Response.json({ success: true, result: { records } });
 
-test('stages secondary sources behind discovery and preserves the completed report', async () => {
+test('starts enrichments for a confirmed identity without waiting for unrelated registries', async () => {
   const ids: string[] = [];
   let resolveCme!: (response: Response) => void;
   let resolveAnchors!: (response: Response) => void;
+  let resolveArchive!: (response: Response) => void;
   const cme = new Promise<Response>((resolve) => {
     resolveCme = resolve;
   });
   const anchors = new Promise<Response>((resolve) => {
     resolveAnchors = resolve;
   });
+  const archive = new Promise<Response>((resolve) => {
+    resolveArchive = resolve;
+  });
   const fetcher = vi.fn<typeof fetch>(async (input) => {
     const source = new URL(String(input)).searchParams.get('resource_id')!;
     ids.push(source);
     if (source === resources.cme.id) return cme;
     if (source === resources.anchors.id) return anchors;
+    if (source === resources.offRoad_3.id) return archive;
     return reply(
       source === resources.private_cars_1.id
-        ? [{ mispar_rechev: 12345678, tozeret_nm: 'רכב לדוגמה' }]
+        ? [
+            {
+              mispar_rechev: 12345678,
+              tozeret_nm: 'רכב לדוגמה',
+              sug_degem: 'P',
+              tozeret_cd: 10,
+              degem_cd: 20,
+              shnat_yitzur: 2020,
+            },
+          ]
         : [],
     );
   });
-  const update =
-    vi.fn<(report: import('../../src/domain/report').Report) => void>();
+  const update = vi.fn<(preview: DiscoveryPreview) => void>();
   const result = new VehicleEngine(new CkanClient(fetcher)).discover(
     '12345678',
     signal(),
@@ -45,18 +59,21 @@ test('stages secondary sources behind discovery and preserves the completed repo
     resolveCme(reply([]));
     await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     expect(update.mock.calls[0][0]).toMatchObject({
-      identity: 'private_cars_1',
-      complete: false,
+      kind: 'registration',
+      report: { identity: 'private_cars_1', complete: false },
     });
+    await vi.waitFor(() => expect(ids).toContain(resources.modelDetails.id));
     await vi.waitFor(() => expect(ids).toContain(resources.anchors.id));
+    resolveArchive(reply([]));
     resolveAnchors(reply([{ mispar_rechev: 12345678 }]));
     const { reports } = await result;
     expect(reports[0].sources.anchors?.rows).toHaveLength(1);
     expect(reports[0].complete).toBe(true);
-    expect(ids).toHaveLength(20);
+    expect(ids).toHaveLength(23);
   } finally {
     resolveCme(reply([]));
     resolveAnchors(reply([]));
+    resolveArchive(reply([]));
     await result;
   }
 });

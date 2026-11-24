@@ -52,19 +52,23 @@ function snapshot(report: Report, side: string) {
           : 'רכב לא נמצא',
     ),
   );
-  if (!report.identity) return card;
   const data = element('dl');
-  for (const [key, title] of highlights) {
-    const field = report.fields[key];
+  if (report.identity) {
+    for (const [key, title] of highlights) {
+      const field = report.fields[key];
+      data.append(
+        element('dt', title),
+        element(
+          'dd',
+          field ? displayValue(key, field.chosen.value) : 'לא זמין',
+        ),
+      );
+    }
     data.append(
-      element('dt', title),
-      element('dd', field ? displayValue(key, field.chosen.value) : 'לא זמין'),
+      element('dt', 'סטטוס רישוי'),
+      element('dd', statusLabels[report.status]),
     );
   }
-  data.append(
-    element('dt', 'סטטוס רישוי'),
-    element('dd', statusLabels[report.status]),
-  );
   if (report.sources.recall)
     data.append(
       element('dt', 'מאגר הגבלות ריקול'),
@@ -77,11 +81,11 @@ function snapshot(report: Report, side: string) {
             : 'לא נמצאה התאמה',
       ),
     );
-  card.append(data);
+  if (data.childElementCount) card.append(data);
   return card;
 }
 
-function comparison(reports: Report[]) {
+function comparison(reports: Report[], signal: AbortSignal) {
   const cards = element('div', undefined, 'compare-cards');
   reports.forEach((report, index) =>
     cards.append(snapshot(report, index ? 'רכב שני' : 'רכב ראשון')),
@@ -90,15 +94,16 @@ function comparison(reports: Report[]) {
   const tools = element('div', undefined, 'compare-tools');
   const heading = element('h2', 'השוואת מפרט');
   const share = mark(
-    button('העתקת קישור להשוואה', () => {
-      void navigator.clipboard
-        .writeText(location.href)
-        .then(() => {
-          status.textContent = 'קישור ההשוואה הועתק.';
-        })
-        .catch(() => {
+    button('העתקת קישור להשוואה', async () => {
+      try {
+        await navigator.clipboard.writeText(location.href);
+        if (!signal.aborted) status.textContent = 'קישור ההשוואה הועתק.';
+      } catch (error) {
+        if (!signal.aborted) {
+          logFailure('copy-comparison', error);
           status.textContent = 'אפשר להעתיק את קישור ההשוואה משורת הכתובת.';
-        });
+        }
+      }
     }),
     'share-2',
   );
@@ -219,7 +224,11 @@ async function compare(updateUrl: boolean) {
   if (updateUrl) {
     const url = new URL(location.href);
     url.search = new URLSearchParams({ a, b }).toString();
-    if (url.href !== location.href) history.pushState(null, '', url);
+    try {
+      if (url.href !== location.href) history.pushState(null, '', url);
+    } catch (error) {
+      logFailure('update-comparison-address', error);
+    }
   }
   const controller = new AbortController();
   active = controller;
@@ -230,7 +239,7 @@ async function compare(updateUrl: boolean) {
     );
     if (controller.signal.aborted) return;
     logLookup('comparison', reports);
-    comparison(reports);
+    comparison(reports, controller.signal);
     result.hidden = false;
     status.textContent = Object.values(reports).some((report) =>
       Object.values(report.sources).some((source) => source.issue),

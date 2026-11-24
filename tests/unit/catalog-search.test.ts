@@ -1,7 +1,9 @@
 import { expect, test } from 'vitest';
 import {
+  catalogResultYear,
   normalizeCatalogTerm,
   rankCatalog,
+  type CatalogFacetIndex,
   type CatalogSearchItem,
 } from '../../src/presentation/catalog-search';
 
@@ -34,7 +36,7 @@ test('prioritizes exact alias and applies model year and maker as independent fi
   expect(normalizeCatalogTerm('  RAV–4 ')).toBe('rav 4');
 });
 
-test('trim and sampled ownership must be present in the same year', () => {
+test('combined facets require a jointly observed trim and ownership', () => {
   const model: CatalogSearchItem = {
     path: 'toyota/corolla',
     make: 'טויוטה',
@@ -43,22 +45,26 @@ test('trim and sampled ownership must be present in the same year', () => {
     search: 'toyota corolla טויוטה קורולה',
     years: [2016, 2017],
     active: 300,
-    trims: [['GLI', [2016]]],
-    sampledOwnership: [
-      ['השכרה', [2017]],
-      ['פרטי', [2016, 2017]],
-    ],
   };
+  const index: CatalogFacetIndex = {
+    [model.path]: {
+      trims: [['gli', [2016, 2017]]],
+      ownership: [
+        ['השכרה', [2016, 2017]],
+        ['פרטי', [2016, 2017]],
+      ],
+      ownershipByTrim: [['gli', 'פרטי', [2016]]],
+    },
+  };
+  const privateGli = { trim: 'GLI', ownership: 'פרטי', index };
   expect(
     rankCatalog([model], '', '', undefined, {
       trim: 'gli',
       ownership: 'השכרה',
+      index,
     }),
   ).toEqual([]);
-  expect(
-    rankCatalog([model], '', '', 2017, { trim: 'GLI', ownership: 'פרטי' }),
-  ).toEqual([]);
-  expect(
-    rankCatalog([model], '', '', 2016, { trim: 'GLI', ownership: 'פרטי' }),
-  ).toEqual([model]);
+  expect(rankCatalog([model], '', '', 2017, privateGli)).toEqual([]);
+  expect(rankCatalog([model], '', '', 2016, privateGli)).toEqual([model]);
+  expect(catalogResultYear(model, privateGli)).toBe(2016);
 });

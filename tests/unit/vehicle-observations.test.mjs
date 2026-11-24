@@ -46,3 +46,15 @@ test('ignores corrections in formatting, plate replacement, and conflicting reco
   ).toEqual([]);
   expect(() => compareObservedEngines(old, old)).toThrow();
 });
+
+test('ignores a plate claimed by two different VINs in one observation month', () => {
+  expect(
+    compareObservedEngines(
+      old,
+      month(
+        { ...row, engine: 'DEF222' },
+        { ...row, vin: 'JTNFAKE2123456789', engine: 'XYZ333' },
+      ),
+    ),
+  ).toEqual([]);
+});

@@ -50,6 +50,10 @@ jobs:
           git add src/data/catalog.json
           git commit -m 'Refresh the national vehicle catalog'
           git push origin "$branch"
-          gh pr create --draft --base "$BASE_BRANCH" --head "$branch" \
+          compare="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/$BASE_BRANCH...$branch?expand=1"
+          printf 'Verified catalog snapshot ready for review\n\n%s\n' "$compare" >> "$GITHUB_STEP_SUMMARY"
+          if ! gh pr create --draft --base "$BASE_BRANCH" --head "$branch" \
             --title 'Refresh the national vehicle catalog' \
-            --body "Source revision checked and npm run verify passed in workflow run ${GITHUB_RUN_ID}."
+            --body "Source revision checked and npm run verify passed in workflow run ${GITHUB_RUN_ID}."; then
+            echo '::warning::Automatic pull request unavailable. The run summary links to the verified snapshot.'
+          fi

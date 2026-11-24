@@ -15,10 +15,20 @@ test('an embedding host with scripts disabled still exposes a standalone link', 
   const context = await browser.newContext({ javaScriptEnabled: false });
   try {
     const page = await context.newPage();
-    await page.goto(new URL('/MyOto/embed/', baseURL).href);
-    const link = page.getByRole('link', { name: 'פתיחת MyOto בחלון נפרד' });
+    await page.route('**/embed-host/', (route) =>
+      route.fulfill({
+        contentType: 'text/html',
+        body: '<iframe sandbox="allow-popups allow-popups-to-escape-sandbox" title="MyOto" src="/MyOto/embed/"></iframe>',
+      }),
+    );
+    await page.goto(new URL('/embed-host/', baseURL).href);
+    const frame = page.frameLocator('iframe');
+    const link = frame.getByRole('link', { name: 'פתיחת MyOto בחלון נפרד' });
     await expect(link).toHaveAttribute('href', '/MyOto/');
     await expect(link).toHaveAttribute('target', '_blank');
+    const opened = page.waitForEvent('popup');
+    await link.click();
+    await expect(await opened).toHaveURL(new URL('/MyOto/', baseURL).href);
   } finally {
     await context.close();
   }

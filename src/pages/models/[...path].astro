@@ -3,6 +3,7 @@ import Site from '../../layouts/Site.astro';
 import CatalogSource from '../../components/CatalogSource.astro';
 import Cohort from '../../components/Cohort.astro';
 import MakeModels from '../../components/MakeModels.astro';
+import ManufacturerPhoto from '../../components/ManufacturerPhoto.astro';
 import '../../styles/catalog.css';
 import {
   catalog,
@@ -104,6 +105,7 @@ const displacements = [
         </div>
       )}
     </dl>
+    {!model && <ManufacturerPhoto make={make.id} />}
     {year && (fuels.length > 0 || displacements.length > 0) && (
       <dl class="catalog-variant-summary">
         {fuels.length > 0 && (

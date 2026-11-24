@@ -12,6 +12,7 @@ const standardCohorts = [
 ];
 const sampleLimit = 200;
 const before2017 = process.argv.includes('--before-2017');
+const allCohorts = process.argv.includes('--all-cohorts');
 
 function olderCohorts() {
   const groups = [];
@@ -37,10 +38,11 @@ function olderCohorts() {
     .map((group) => group.point);
 }
 
-const cohorts = before2017 ? olderCohorts() : standardCohorts;
-const prior = before2017
-  ? JSON.parse(await readFile(file('cohorts'), 'utf8'))
-  : undefined;
+const cohorts = [
+  ...(!before2017 || allCohorts ? standardCohorts : []),
+  ...(before2017 || allCohorts ? olderCohorts() : []),
+];
+const prior = JSON.parse(await readFile(file('cohorts'), 'utf8'));
 
 async function rows(
   source,
@@ -104,11 +106,25 @@ function distribution(sample, field) {
   return published;
 }
 
+function ownershipByTrim(sample) {
+  const counts = new Map();
+  for (const row of sample) {
+    const trim = String(row.ramat_gimur ?? '').trim();
+    const ownership = String(row.baalut ?? '').trim();
+    if (!trim || !ownership) continue;
+    const key = JSON.stringify([trim, ownership]);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts].flatMap(([key, count]) =>
+    count >= 5 ? [[...JSON.parse(key), count]] : [],
+  );
+}
+
 const result = {
-  fetchedAt: prior?.fetchedAt ?? new Date().toISOString(),
+  fetchedAt: prior.fetchedAt,
   sampleLimit,
   method: 'stratified-rank-windows',
-  cohorts: { ...prior?.cohorts },
+  cohorts: { ...prior.cohorts },
 };
 const observedAt = new Date().toISOString();
 let refreshed = 0;
@@ -211,6 +227,7 @@ for (const [make, slug, year] of cohorts) {
     frameSize: frame.total,
     colors: distribution(sample, 'tzeva_rechev'),
     ownership: distribution(sample, 'baalut'),
+    ownershipByTrim: ownershipByTrim(sample),
     fuel: distribution(sample, 'sug_delek_nm'),
     trims: distribution(sample, 'ramat_gimur'),
     mileage: mileageSummary(mileage),

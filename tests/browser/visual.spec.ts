@@ -201,6 +201,10 @@ test('collision, incomplete and empty lookups remain distinguishable', async ({
   await expect(
     page.getByRole('heading', { name: 'נמצאו שני כלים עם אותו מספר' }),
   ).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('#report')).not.toHaveAttribute(
+    'aria-busy',
+    'true',
+  );
   await expect(page).toHaveScreenshot('collision-390.png');
   await page.getByRole('button', { name: /צמ״ה/ }).click();
   await expect(page).toHaveURL(/type=equipment/);
@@ -234,6 +238,10 @@ test('the main search includes recall even without a matching registry identity'
   await expect(
     page.getByText('נמצאה קריאת שירות במאגר ההגבלות.'),
   ).toBeVisible();
+  await expect(page.locator('#report')).not.toHaveAttribute(
+    'aria-busy',
+    'true',
+  );
   await expect(page.getByRole('link', { name: 'אתר היבואן' })).toHaveCount(0);
   await expect(page.getByText('החלפת רכיב במערכת הבלימה')).toBeVisible();
   expect(new Set(requested).size).toBe(21);
@@ -270,6 +278,89 @@ test('the main search includes recall even without a matching registry identity'
       .locator('#report-sources summary')
       .filter({ hasText: /ריקול.*אינו זמין/ }),
   ).toBeVisible();
+});
+
+for (const [label, plate] of [
+  ['collision', collision],
+  ['recall only', onlyRecall],
+] as const) {
+  test(`shows proven ${label} while a secondary source is still pending`, async ({
+    page,
+  }) => {
+    await fixtures(page);
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    await page.route(
+      (url) => url.searchParams.get('resource_id') === resources.anchors.id,
+      async (route) => {
+        await pending;
+        await route.fallback();
+      },
+    );
+    try {
+      await page.goto(`/MyOto/?search=${plate}`);
+      const report = page.locator('#report');
+      const choice = page.getByRole('button', { name: /רכב ברישוי רגיל/ });
+      if (plate === collision) {
+        await expect(choice).toBeDisabled();
+        await expect(page.locator('.vehicle-heading')).toHaveCount(0);
+      } else {
+        await expect(page.locator('#vehicle-recall')).toBeVisible();
+        await expect(
+          page.getByText('לא נמצאה רשומת רישוי במספר שהוזן.'),
+        ).toHaveCount(0);
+      }
+      await expect(report).toHaveAttribute('aria-busy', 'true');
+      finish();
+      await expect(report).not.toHaveAttribute('aria-busy', 'true');
+      if (plate === collision) await expect(choice).toBeEnabled();
+      else await expect(page.locator('#vehicle-recall')).toHaveCount(1);
+    } finally {
+      finish();
+    }
+  });
+}
+
+test('explains a failed recall check when both vehicle registries are empty', async ({
+  page,
+}) => {
+  await fixtures(page);
+  await page.route(
+    (url) => url.searchParams.get('resource_id') === resources.recall.id,
+    (route) =>
+      route.fulfill({
+        status: 404,
+        headers: { 'access-control-allow-origin': '*' },
+      }),
+  );
+  await page.goto(`/MyOto/?search=${missing}`);
+  await expect(
+    page.getByRole('heading', { name: 'לא נמצאה התאמה' }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('בדיקת הריקול לפי מספר הרישוי לא הושלמה.'),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'נסה שוב' })).toBeVisible();
+  await expect(page.locator('#vehicle-recall')).toHaveCount(0);
+});
+
+test('comparison keeps plate-based recall and reports missing Clipboard support', async ({
+  page,
+}) => {
+  await fixtures(page);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined });
+  });
+  await page.goto(`/MyOto/compare/?a=${onlyRecall}&b=${registration}`);
+  const recallOnly = page.locator('.compare-card').first();
+  await expect(recallOnly.getByRole('heading')).toHaveText('רכב לא נמצא');
+  await expect(recallOnly.getByText('נמצאה רשומה')).toBeVisible();
+  await page.getByRole('button', { name: 'העתקת קישור להשוואה' }).click();
+  await expect(page.locator('#comparison-status')).toHaveText(
+    'אפשר להעתיק את קישור ההשוואה משורת הכתובת.',
+  );
 });
 
 test('report controls keep their location and section order survives reload', async ({

@@ -1,10 +1,18 @@
 import { chromium } from 'playwright';
 import { readFile } from 'node:fs/promises';
+import { setTimeout } from 'node:timers/promises';
 import resources from '../src/data/resources.json' with { type: 'json' };
 
 const endpoint = 'https://data.gov.il/api/3/action/datastore_search';
 const base = process.env.MYOTO_PREVIEW_BASE ?? 'http://127.0.0.1:4322/MyOto/';
+const referenceBase = process.env.MYOTO_REFERENCE_BASE;
 const verifyFields = process.argv.includes('--verify-fields');
+const controlled = process.argv.includes('--controlled');
+const testPlates = new Map([
+  ['רישוי עם מאגר ארכיוני איטי', '11234567'],
+  ['חפיפה עם צמ״ה', '21234567'],
+  ['ריקול עצמאי', '31234567'],
+]);
 const scenarios = [
   ['פרטי', 'private_cars_1', 'mispar_rechev', { sug_degem: 'P' }],
   ['מסחרי', 'private_cars_1', 'mispar_rechev', { sug_degem: 'M' }],
@@ -41,10 +49,11 @@ async function sample(source, field, filter) {
   ];
 }
 
-async function measure(browser, plate) {
+async function measure(browser, plate, address = base) {
   const page = await browser.newPage({ viewport: { width: 390, height: 850 } });
   const responses = [];
   let requests = 0;
+  if (controlled) await simulatedData(page, plate);
   page.on('request', (request) => {
     if (request.url().startsWith(endpoint)) requests++;
   });
@@ -57,7 +66,7 @@ async function measure(browser, plate) {
       );
     });
   try {
-    await page.goto(base);
+    await page.goto(address);
     const timer = performance.now();
     const input = page.locator('#plate');
     await input.fill(plate);
@@ -91,6 +100,47 @@ async function measure(browser, plate) {
   } finally {
     await page.close();
   }
+}
+
+async function simulatedData(page, plate) {
+  const number = Number(plate);
+  const car = {
+    mispar_rechev: number,
+    sug_degem: 'P',
+    tozeret_cd: 100,
+    degem_cd: 200,
+    shnat_yitzur: 2021,
+  };
+  const records = new Map([
+    ...(plate === '31234567'
+      ? [
+          [resources.recall.id, [{ MISPAR_RECHEV: number, RECALL_ID: 501 }]],
+          [resources.campaigns.id, [{ RECALL_ID: 501 }]],
+        ]
+      : [[resources.private_cars_1.id, [car]]]),
+    ...(plate === '21234567'
+      ? [[resources.cme.id, [{ mispar_tzama: number, sug_tzama_nm: 'מחפר' }]]]
+      : []),
+  ]);
+  await page.route(
+    (url) => url.href.startsWith(endpoint),
+    async (route) => {
+      const source = new URL(route.request().url()).searchParams.get(
+        'resource_id',
+      );
+      const delay =
+        source === resources.offRoad_3.id && plate === '11234567'
+          ? 1600
+          : source === resources.anchors.id && plate !== '11234567'
+            ? 1200
+            : 150;
+      await setTimeout(delay);
+      await route.fulfill({
+        headers: { 'access-control-allow-origin': '*' },
+        json: { success: true, result: { records: records.get(source) ?? [] } },
+      });
+    },
+  );
 }
 
 async function fieldCheck(page, responses) {
@@ -139,28 +189,47 @@ async function fieldCheck(page, responses) {
 }
 
 const browser = await chromium.launch({ channel: 'chrome' });
+let referenceFirst = true;
 try {
-  for (const [label, source, field, filter] of scenarios) {
+  const trials = controlled
+    ? [...testPlates.keys()].map((label) => [label])
+    : scenarios;
+  for (const [label, source, field, filter] of trials) {
     if (
       verifyFields &&
       !['פרטי', 'מסחרי', 'רישום מבוטל', 'רישום ריקול'].includes(label)
     )
       continue;
     try {
-      const plates = (await sample(source, field, filter)).slice(
+      const candidates = controlled
+        ? [testPlates.get(label), testPlates.get(label)]
+        : await sample(source, field, filter);
+      const plates = candidates.slice(
         0,
         process.argv.includes('--two-per-type') ? 2 : 1,
       );
       if (!plates.length)
         console.log(JSON.stringify({ label, issue: 'No sample' }));
-      for (const [index, plate] of plates.entries())
+      for (const [index, plate] of plates.entries()) {
+        const paired = {};
+        if (referenceBase) {
+          const versions = [
+            ['before', referenceBase],
+            ['after', base],
+          ];
+          if (!referenceFirst) versions.reverse();
+          referenceFirst = !referenceFirst;
+          for (const [version, address] of versions)
+            paired[version] = await measure(browser, plate, address);
+        }
         console.log(
           JSON.stringify({
             label,
             sample: index + 1,
-            ...(await measure(browser, plate)),
+            ...(referenceBase ? paired : await measure(browser, plate)),
           }),
         );
+      }
     } catch (error) {
       console.log(JSON.stringify({ label, issue: error.name }));
       process.exitCode = 1;

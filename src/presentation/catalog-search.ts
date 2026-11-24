@@ -6,8 +6,21 @@ export type CatalogSearchItem = {
   search: string;
   years: number[];
   active: number;
-  trims?: [string, number[]][];
-  sampledOwnership?: [string, number[]][];
+};
+
+export type CatalogFacetIndex = Record<
+  string,
+  {
+    trims?: [string, number[]][];
+    ownership?: [string, number[]][];
+    ownershipByTrim?: [string, string, number[]][];
+  }
+>;
+
+type CatalogFilters = {
+  trim?: string;
+  ownership?: string;
+  index?: CatalogFacetIndex;
 };
 
 export const normalizeCatalogTerm = (value: string) =>
@@ -18,26 +31,44 @@ export const normalizeCatalogTerm = (value: string) =>
     .trim()
     .replace(/\s+/g, ' ');
 
+function filterYears(path: string, filters: CatalogFilters) {
+  const { trim, ownership } = filters;
+  const data = filters.index?.[path];
+  if (trim && ownership)
+    return (
+      data?.ownershipByTrim?.find(
+        ([t, o]) => t === trim && o === ownership,
+      )?.[2] ?? []
+    );
+  if (trim) return data?.trims?.find(([label]) => label === trim)?.[1] ?? [];
+  if (ownership)
+    return data?.ownership?.find(([label]) => label === ownership)?.[1] ?? [];
+}
+
+export function catalogResultYear(
+  entry: CatalogSearchItem,
+  filters: CatalogFilters,
+) {
+  const matchingYears = filterYears(entry.path, normalizeFilters(filters));
+  return matchingYears?.length === 1 ? matchingYears[0] : undefined;
+}
+
+const normalizeFilters = ({ trim, ownership, index }: CatalogFilters) => ({
+  trim: normalizeCatalogTerm(trim ?? ''),
+  ownership: normalizeCatalogTerm(ownership ?? ''),
+  index,
+});
+
 export function rankCatalog(
   items: CatalogSearchItem[],
   query: string,
   make: string,
   year?: number,
-  facets: { trim?: string; ownership?: string } = {},
+  facets: CatalogFilters = {},
 ) {
   const terms = normalizeCatalogTerm(query).split(' ').filter(Boolean);
   const queryText = terms.join(' ');
-  const trim = normalizeCatalogTerm(facets.trim ?? '');
-  const ownership = normalizeCatalogTerm(facets.ownership ?? '');
-  const knownYears = (
-    values: [string, number[]][] | undefined,
-    value: string,
-  ) =>
-    new Set(
-      values?.flatMap(([label, years]) =>
-        normalizeCatalogTerm(label) === value ? years : [],
-      ),
-    );
+  const filters = normalizeFilters(facets);
   const results = items.flatMap((entry) => {
     if (
       (make && !entry.path.startsWith(make + '/')) ||
@@ -45,20 +76,12 @@ export function rankCatalog(
       terms.some((term) => !entry.search.includes(term))
     )
       return [];
-    if (trim || ownership) {
-      const trimYears = trim ? knownYears(entry.trims, trim) : undefined;
-      const owners = ownership
-        ? knownYears(entry.sampledOwnership, ownership)
-        : undefined;
-      if (
-        !(year ? [year] : entry.years).some(
-          (value) =>
-            (!trimYears || trimYears.has(value)) &&
-            (!owners || owners.has(value)),
-        )
-      )
-        return [];
-    }
+    const matchingYears = filterYears(entry.path, filters);
+    if (
+      matchingYears &&
+      !(year ? matchingYears.includes(year) : matchingYears.length)
+    )
+      return [];
     const names = [entry.name, ...entry.aliases].map(normalizeCatalogTerm);
     const maker = normalizeCatalogTerm(entry.make);
     const labels = [...names, ...names.map((name) => maker + ' ' + name)];

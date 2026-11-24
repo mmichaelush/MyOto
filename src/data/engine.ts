@@ -38,6 +38,10 @@ export type Discovery = {
   checks: Record<SearchDomain, 'found' | 'empty' | 'partial'>;
 };
 
+export type DiscoveryPreview =
+  | { kind: 'registration' | 'recall'; report: Report }
+  | { kind: 'collision'; reports: [Report, Report] };
+
 export class VehicleEngine {
   constructor(private readonly client = new CkanClient()) {}
 
@@ -73,13 +77,35 @@ export class VehicleEngine {
   async discover(
     input: string,
     signal: AbortSignal,
-    update?: (report: Report) => void,
+    update?: (preview: DiscoveryPreview) => void,
   ): Promise<Discovery> {
     const budget = new RequestBudget(registrationRequestBudget);
-    let preview: Report | undefined;
-    let equipmentChecked = false;
+    let registrationPreview: Report | undefined;
+    let equipmentPreview: Report | undefined;
+    let shown: DiscoveryPreview['kind'] | undefined;
     const emitPreview = () => {
-      if (equipmentChecked && preview && !signal.aborted) update?.(preview);
+      if (
+        !update ||
+        !registrationPreview ||
+        !equipmentPreview ||
+        signal.aborted
+      )
+        return;
+      const report = registrationPreview;
+      const equipment = equipmentPreview;
+      const matched = report.identity || report.recalls.length;
+      const preview: DiscoveryPreview | undefined =
+        matched && equipment.identity
+          ? { kind: 'collision', reports: [report, equipment] }
+          : report.identity && !equipment.sources.cme?.issue
+            ? { kind: 'registration', report }
+            : report.recalls.length
+              ? { kind: 'recall', report }
+              : undefined;
+      if (preview && shown !== preview.kind) {
+        shown = preview.kind;
+        update(preview);
+      }
     };
     const equipmentLookup = this.lookup(
       input,
@@ -87,8 +113,7 @@ export class VehicleEngine {
       signal,
       budget,
     ).then((report) => {
-      // Avoid previewing a regular vehicle while a collision is still possible.
-      equipmentChecked = !report.identity && !report.sources.cme?.issue;
+      equipmentPreview = report;
       emitPreview();
       return report;
     });
@@ -99,10 +124,13 @@ export class VehicleEngine {
       budget,
       (report) => {
         if (!report.complete) {
-          preview = report;
+          registrationPreview = report;
           emitPreview();
         }
       },
+      false,
+      'full',
+      true,
     );
     const [equipment, registration] = await Promise.all([
       equipmentLookup,
@@ -136,25 +164,30 @@ export class VehicleEngine {
     update?: (report: Report) => void,
     legacyFallback = false,
     mode: 'full' | 'comparison' = 'full',
+    previewRecall = false,
   ): Promise<Report> {
     const plate = parsePlate(input);
     if (!plate)
       throw new RangeError('Invalid registration or equipment number');
     const sources: SourceReplies = {};
-    let published = false;
-    const publish = () => {
-      if (!update || published || signal.aborted) return;
+    let elected = false;
+    let selectIdentity: ((key?: SourceId) => void) | undefined;
+    const elect = () => {
+      if (elected || signal.aborted) return;
       const priority =
         domain === 'equipment' ? (['cme'] as const) : discoverySources;
       for (const key of priority) {
         const reply = sources[key];
         if (!reply) return;
         if (reply.rows.length) {
-          published = true;
-          update(buildReport(plate, domain, sources, false));
+          elected = true;
+          selectIdentity?.(key);
+          update?.(buildReport(plate, domain, sources, false));
           return;
         }
       }
+      elected = true;
+      selectIdentity?.();
     };
     const query = async (key: SourceId, filter = plateFilter(key, plate)) => {
       const reply = await this.client.lookup(
@@ -166,7 +199,7 @@ export class VehicleEngine {
       );
       signal.throwIfAborted();
       sources[key] = reply;
-      publish();
+      elect();
       return reply;
     };
     if (domain === 'equipment') {
@@ -174,9 +207,15 @@ export class VehicleEngine {
     } else if (mode === 'comparison') {
       await Promise.all(comparisonSources.map((key) => query(key)));
     } else {
+      const identity = new Promise<SourceId | undefined>((resolve) => {
+        selectIdentity = resolve;
+      });
       const recalls = query('recall');
       const discovery = Promise.all(discoverySources.map((key) => query(key)));
       const details = Promise.all(reportSources.map((key) => query(key)));
+      const supplemental = Promise.all(
+        supplementalSources.map((key) => query(key)),
+      );
       const campaigns = recalls.then(({ rows }) => {
         const ids = [
           ...new Set(
@@ -191,26 +230,24 @@ export class VehicleEngine {
         ];
         return ids.length ? query('campaigns', { RECALL_ID: ids }) : undefined;
       });
-      const supplemental = discovery.then(async () => {
-        const report = buildReport(plate, domain, sources, false);
-        const base = report.identity
-          ? sources[report.identity]?.rows[0]
-          : undefined;
+      const specs = identity.then(async (key) => {
+        const base = key ? sources[key]?.rows[0] : undefined;
         const filter = base ? modelFilter(base) : undefined;
-        const requests = supplementalSources.map((key) => query(key));
         if (filter)
-          requests.push(...modelSources.map((key) => query(key, filter)));
-        if (
-          !base &&
-          legacyFallback &&
-          discoverySources.every((key) => !sources[key]?.issue)
-        ) {
+          await Promise.all(modelSources.map((key) => query(key, filter)));
+        if (!key) {
           const recall = await recalls;
-          if (!recall.rows.length) requests.push(query('cme'));
+          if (previewRecall && recall.rows.length)
+            update?.(buildReport(plate, domain, sources, false));
+          if (
+            legacyFallback &&
+            !recall.rows.length &&
+            discoverySources.every((source) => !sources[source]?.issue)
+          )
+            await query('cme');
         }
-        await Promise.all(requests);
       });
-      await Promise.all([discovery, details, campaigns, supplemental]);
+      await Promise.all([discovery, details, campaigns, supplemental, specs]);
     }
     const fallback =
       domain !== 'equipment' && Boolean(sources.cme?.rows.length);
