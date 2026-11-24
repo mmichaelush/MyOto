@@ -225,6 +225,17 @@ function renderActions(report: Report) {
     action('הדפסה / PDF', 'printer', () => window.print()),
     more,
   );
+  if (report.domain === 'registration') {
+    const compare = new URL(
+      import.meta.env.BASE_URL + 'compare/',
+      location.origin,
+    );
+    compare.searchParams.set('a', report.plate);
+    actions.insertBefore(
+      mark(link('השוואה לרכב נוסף', compare.href), 'columns-2'),
+      more,
+    );
+  }
   output.querySelector('.report-summary')?.append(actions);
 }
 
@@ -233,6 +244,16 @@ function showResult(report: Report) {
   if (!report.identity) return;
   renderActions(report);
   const signal = controller?.signal;
+  const article = output.firstElementChild;
+  if (signal && report.fields.kilometer_test_aharon) {
+    void import('./mileage')
+      .then(({ mileageComparison }) => {
+        if (signal.aborted) return;
+        const comparison = mileageComparison(report);
+        if (comparison) article?.append(comparison);
+      })
+      .catch(() => {});
+  }
   if (signal)
     void import('./model-link')
       .then(({ modelLink }) => modelLink(report, signal))

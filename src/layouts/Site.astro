@@ -44,6 +44,14 @@ const base = import.meta.env.BASE_URL;
         >
           יצרנים ודגמים
         </a>
+        <a
+          href={base + 'compare/'}
+          aria-current={
+            Astro.url.pathname === base + 'compare/' ? 'page' : undefined
+          }
+        >
+          השוואת רכבים
+        </a>
       </nav>
     </header>
     <main class="wrap" id="main">
