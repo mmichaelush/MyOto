@@ -1,0 +1,31 @@
+﻿name: Verify full engine catalog scan
+on:
+  push:
+    branches: ['codex/myoto-full-catalog-check']
+permissions:
+  contents: read
+concurrency:
+  group: full-engine-catalog-check
+  cancel-in-progress: false
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/refresh-engine-catalog.mjs --full
+      - name: Verify full registry coverage
+        run: |
+          node --input-type=module -e '
+            import t from "./src/data/engine-catalog.json" with {type:"json"};
+            if (t.sampled !== t.population || t.retiredFrames?.length !== 3 || !t.retired?.length) process.exit(1);
+            console.log(JSON.stringify({active: t.sampled, retired: t.retiredFrames, activeCodes: t.entries.length, retiredCodes: t.retired.length}));
+          '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: full-engine-catalog
+          path: src/data/engine-catalog.json
+          retention-days: 14
