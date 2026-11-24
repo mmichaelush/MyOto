@@ -1,0 +1,206 @@
+import { resources, type SourceId } from '../data/sources';
+import type { Report } from '../domain/report';
+import {
+  sourceDate,
+  sourceResult,
+  vehicleViewModel,
+  type DataRow,
+  type DataSection,
+  type DataTable,
+} from '../presentation/vehicle-view-model';
+import { element, link } from './dom';
+import { icon, mark } from './icons';
+
+export { statusLabels, vehicleName } from '../presentation/vehicle-view-model';
+
+function dataRow(data: DataRow, highlight = false) {
+  const row = element('div', undefined, highlight ? 'data-metric' : 'data-row');
+  const label = element('dt', data.label);
+  if (highlight && data.icon) mark(label, data.icon);
+  const value = element('dd');
+  value.append(element('bdi', data.text));
+  if (data.help || data.differences?.length) {
+    const details = element('details', undefined, 'field-disclosure');
+    const summary = element('summary', undefined, 'with-icon');
+    summary.append(
+      icon('info'),
+      element('span', data.differences ? 'ערכים שונים במקורות' : 'מידע נוסף'),
+    );
+    details.append(summary);
+    if (data.help) details.append(element('p', data.help));
+    for (const entry of data.differences ?? []) {
+      const observation = element('p');
+      observation.append(
+        element('bdi', entry.text),
+        element('small', entry.source),
+      );
+      details.append(observation);
+    }
+    value.append(details);
+  }
+  row.append(label, value);
+  return row;
+}
+
+function dataSection(data: DataSection) {
+  const section = element('section', undefined, 'data-section');
+  section.append(mark(element('h3', data.title), data.icon));
+  if (data.note) section.append(element('p', data.note, 'muted section-note'));
+  for (const group of data.groups) {
+    const list = element('dl');
+    list.append(...group.map((row) => dataRow(row)));
+    section.append(list);
+  }
+  return section;
+}
+
+function dataTable(data: DataTable) {
+  const section = element('section', undefined, 'data-section');
+  section.append(mark(element('h3', data.title), data.icon));
+  if (data.note) section.append(element('p', data.note, 'muted section-note'));
+  const scroll = element('div', undefined, 'table-scroll');
+  scroll.setAttribute('role', 'region');
+  scroll.setAttribute('aria-label', data.title);
+  scroll.tabIndex = 0;
+  const table = element('table');
+  const head = table.createTHead().insertRow();
+  for (const label of data.labels) {
+    const column = element('th', label);
+    column.scope = 'col';
+    head.append(column);
+  }
+  const body = table.createTBody();
+  for (const values of data.rows) {
+    const row = body.insertRow();
+    values.forEach((value) => row.insertCell().append(element('bdi', value)));
+  }
+  scroll.append(table);
+  section.append(scroll);
+  return section;
+}
+
+function sourceDetails(report: Report) {
+  const section = element('details', undefined, 'advanced source-list');
+  section.append(mark(element('summary', 'מקורות המידע'), 'database'));
+  const sorted = Object.entries(report.sources).sort(([a], [b]) =>
+    resources[a as SourceId].label.localeCompare(
+      resources[b as SourceId].label,
+      'he',
+    ),
+  );
+  for (const [id, reply] of sorted) {
+    const key = id as SourceId;
+    const resource = resources[key];
+    const item = element('details', undefined, 'raw-source');
+    const match = report.separated.includes(key)
+      ? ' · נמצאו פרטי רכב אחר'
+      : report.unverified.includes(key)
+        ? ' · השיוך לרכב לא אומת'
+        : '';
+    const summary = element(
+      'summary',
+      `${resource.label} · ${sourceResult(reply)}${match}`,
+    );
+    const update = sourceDate(reply.upstreamUpdatedAt);
+    const fetched = sourceDate(reply.fetchedAt);
+    const information = element('p', undefined, 'muted');
+    if (update || fetched)
+      information.append(
+        `${update ? 'עודכן ' + update : 'נשלף ' + fetched} · `,
+      );
+    information.append(link('למאגר הרשמי', resource.url));
+    item.append(summary, information);
+    item.addEventListener('toggle', () => {
+      if (item.open && reply.rows.length && !item.querySelector('pre')) {
+        item.append(element('pre', JSON.stringify(reply.rows, null, 2)));
+      }
+    });
+    section.append(item);
+  }
+  if (report.recalls.length) {
+    const notice = element('p');
+    notice.append(
+      link(
+        'בדיקת קריאת שירות באתר משרד התחבורה',
+        'https://www.gov.il/he/service/recall-vehicle',
+      ),
+    );
+    section.append(notice);
+  }
+  return section;
+}
+
+export function renderReport(report: Report) {
+  const article = element('article', undefined, 'vehicle-report');
+  if (!report.identity) {
+    if (!report.complete) return article;
+    article.append(
+      element(
+        'p',
+        report.outcome === 'empty'
+          ? 'לא נמצאה התאמה במספר שהוזן.'
+          : 'חלק מהמאגרים לא היו זמינים. אפשר לנסות שוב.',
+        'panel notice',
+      ),
+      sourceDetails(report),
+    );
+    return article;
+  }
+
+  const view = vehicleViewModel(report);
+  const summary = element('section', undefined, 'panel report-summary');
+  const heading = element('div', undefined, 'vehicle-heading');
+  const title = element('div', undefined, 'vehicle-title');
+  const name = element('h2');
+  name.append(element('bdi', view.title));
+  title.append(name);
+  if (view.subtitle) title.append(element('p', view.subtitle, 'muted'));
+  if (view.status)
+    title.append(
+      element('p', view.status, `vehicle-status status-${report.status}`),
+    );
+  const plate = element('div', undefined, 'plate report-plate');
+  plate.dir = 'ltr';
+  plate.append(
+    element('span', view.kind === 'equipment' ? 'צמ״ה' : 'IL', 'plate-country'),
+    element('bdi', view.plate),
+  );
+  heading.append(title, plate);
+  summary.append(heading);
+  if (view.highlights.length) {
+    const measures = element('dl', undefined, 'report-metrics');
+    measures.append(...view.highlights.map((row) => dataRow(row, true)));
+    summary.append(measures);
+  }
+  const footnote = element(
+    'p',
+    'הנתונים מבוססים על מאגרי משרד התחבורה',
+    'report-source-note muted',
+  );
+  if (view.updated || view.retrieved)
+    footnote.append(
+      view.updated ? ' · עודכן ' + view.updated : ' · נשלף ' + view.retrieved,
+    );
+  summary.append(footnote);
+  article.append(summary);
+  if (!report.complete) return article;
+
+  if (view.alerts.length) {
+    const alerts = element('ul', undefined, 'report-alerts notice');
+    for (const text of view.alerts) alerts.append(element('li', text));
+    article.append(alerts);
+  }
+  const firstTable = view.tables.find(
+    (table) => table.icon === 'triangle-alert',
+  );
+  if (firstTable) article.append(dataTable(firstTable));
+  const details = element('div', undefined, 'report-sections');
+  details.append(
+    ...view.sections.map(dataSection),
+    ...view.tables.filter((table) => table !== firstTable).map(dataTable),
+    ...view.additional.map(dataSection),
+  );
+  if (details.children.length) article.append(details);
+  article.append(sourceDetails(report));
+  return article;
+}

@@ -36,6 +36,7 @@ export class VehicleEngine {
     domain: SearchDomain,
     signal: AbortSignal,
     update?: (report: Report) => void,
+    legacyFallback = true,
   ): Promise<Report> {
     return this.lookup(
       input,
@@ -43,7 +44,7 @@ export class VehicleEngine {
       signal,
       new RequestBudget(domain === 'equipment' ? 6 : registrationRequestBudget),
       update,
-      domain === 'registration',
+      legacyFallback && domain === 'registration',
     );
   }
 
