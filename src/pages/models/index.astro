@@ -1,0 +1,198 @@
+---
+import Site from '../../layouts/Site.astro';
+import CatalogSource from '../../components/CatalogSource.astro';
+import { catalog, count } from '../../data/catalog';
+const base = import.meta.env.BASE_URL + 'models/';
+const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
+---
+
+<Site title="יצרנים ודגמים בישראל">
+  <section class="panel catalog-heading">
+    <h1>יצרנים ודגמים בישראל</h1>
+    <p>
+      {count.format(modelCount)} דגמים בקטלוג משרד התחבורה. חפשו לפי יצרן, דגם,
+      שנת ייצור או רמת גימור.
+    </p>
+    <div class="catalog-filters">
+      <label class="control">
+        חיפוש בקטלוג
+        <input
+          id="model-filter"
+          class="text-input"
+          type="search"
+          list="model-names"
+          placeholder="לדוגמה: לנסר 2010"
+          autocomplete="off"
+        />
+      </label>
+      <label class="control">
+        יצרן
+        <select id="catalog-make">
+          <option value="">כל היצרנים</option>
+          {catalog.makes.map((make) => (
+            <option value={make.id}>{make.name}</option>
+          ))}
+        </select>
+      </label>
+      <label class="control">
+        שנת ייצור
+        <input
+          id="catalog-year"
+          class="text-input"
+          inputmode="numeric"
+          maxlength="4"
+          placeholder="כל השנים"
+        />
+      </label>
+    </div>
+    <datalist id="model-names"></datalist>
+    <p id="model-filter-status" role="status" class="muted"></p>
+  </section>
+  <section class="panel" id="model-results" aria-label="תוצאות חיפוש" hidden>
+    <div class="catalog-results-heading">
+      <h2>תוצאות חיפוש</h2>
+      <button class="secondary" id="catalog-reset" type="button">
+        חזרה לרשימת יצרנים
+      </button>
+    </div>
+    <div class="model-grid"></div>
+  </section>
+  <section class="panel" id="all-makes">
+    <h2>רשימת יצרנים</h2>
+    <div class="model-grid">
+      {catalog.makes.map((make) => (
+        <a class="model-card" href={base + make.id + '/'}>
+          <strong>
+            <bdi>{make.name}</bdi>
+          </strong>
+          <span>{count.format(make.models.length)} דגמים</span>
+        </a>
+      ))}
+    </div>
+  </section>
+  <CatalogSource />
+</Site>
+<script>
+  import { element, link } from '../../ui/dom';
+  import {
+    normalizeCatalogTerm,
+    rankCatalog,
+    type CatalogSearchItem,
+  } from '../../presentation/catalog-search';
+  const input = document.querySelector<HTMLInputElement>('#model-filter')!;
+  const status = document.querySelector<HTMLElement>('#model-filter-status')!;
+  const make = document.querySelector<HTMLSelectElement>('#catalog-make')!;
+  const yearInput = document.querySelector<HTMLInputElement>('#catalog-year')!;
+  const makes = document.querySelector<HTMLElement>('#all-makes')!;
+  const section = document.querySelector<HTMLElement>('#model-results')!;
+  const grid = section.querySelector('.model-grid')!;
+  const suggestions =
+    document.querySelector<HTMLDataListElement>('#model-names')!;
+  const base = import.meta.env.BASE_URL + 'models/';
+  let index: Promise<CatalogSearchItem[]> | undefined;
+  let current = 0;
+  const count = new Intl.NumberFormat('he-IL');
+
+  async function search() {
+    const id = ++current;
+    const terms = normalizeCatalogTerm(input.value).split(' ').filter(Boolean);
+    const inlineYear = terms.find((term) => /^(?:19|20)\d{2}$/.test(term));
+    const requestedYear = /^(?:19|20)\d{2}$/.test(yearInput.value.trim())
+      ? yearInput.value.trim()
+      : inlineYear;
+    const query = terms.filter((term) => term !== inlineYear).join(' ');
+    if (!query && !requestedYear && !make.value) {
+      makes.hidden = false;
+      section.hidden = true;
+      status.textContent = '';
+      suggestions.replaceChildren();
+      return;
+    }
+    status.textContent = 'טוען תוצאות…';
+    index ??= fetch(base + 'search-index.json')
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Catalog index unavailable');
+        return (await response.json()) as CatalogSearchItem[];
+      })
+      .catch((error) => {
+        index = undefined;
+        throw error;
+      });
+    try {
+      const list = await index;
+      if (id !== current) return;
+      const matches = rankCatalog(
+        list,
+        query,
+        make.value,
+        requestedYear ? Number(requestedYear) : undefined,
+      );
+      const shown = matches.slice(0, 36);
+      grid.replaceChildren(
+        ...shown.map((entry) => {
+          const year =
+            requestedYear && entry.years.includes(Number(requestedYear))
+              ? requestedYear + '/'
+              : '';
+          const card = link('', base + entry.path + '/' + year);
+          card.className = 'model-card';
+          card.dataset.model = '';
+          const label = element('strong');
+          label.append(
+            element('bdi', entry.name + (year ? ' ' + requestedYear : '')),
+          );
+          card.append(label, element('span', entry.make));
+          return card;
+        }),
+      );
+      suggestions.replaceChildren(
+        ...shown.slice(0, 8).map((entry) => {
+          const item = element('option');
+          const year =
+            requestedYear && entry.years.includes(Number(requestedYear))
+              ? ' ' + requestedYear
+              : '';
+          item.value = entry.make + ' ' + entry.name + year;
+          return item;
+        }),
+      );
+      makes.hidden = true;
+      section.hidden = false;
+      status.textContent = !matches.length
+        ? 'לא נמצאו דגמים. נסו שם יצרן או כינוי אחר.'
+        : shown.length < matches.length
+          ? `${count.format(matches.length)} דגמים. מוצגות ${shown.length} תוצאות.`
+          : `${count.format(matches.length)} דגמים בקטלוג`;
+    } catch {
+      if (id !== current) return;
+      section.hidden = true;
+      makes.hidden = false;
+      status.textContent =
+        'החיפוש אינו זמין כרגע. אפשר לפתוח דגם דרך רשימת היצרנים.';
+    }
+  }
+  input.addEventListener('input', () => {
+    void search();
+  });
+  input.addEventListener('search', () => {
+    void search();
+  });
+  make.addEventListener('change', () => {
+    void search();
+  });
+  yearInput.addEventListener('input', () => {
+    void search();
+  });
+  document.querySelector('#catalog-reset')?.addEventListener('click', () => {
+    input.value = '';
+    make.value = '';
+    yearInput.value = '';
+    input.focus();
+    void search();
+  });
+  const query = new URLSearchParams(location.search).get('q');
+  if (query) {
+    input.value = query;
+    void search();
+  }
+</script>

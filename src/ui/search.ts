@@ -232,6 +232,14 @@ function showResult(report: Report) {
   output.replaceChildren(renderReport(report));
   if (!report.identity) return;
   renderActions(report);
+  const signal = controller?.signal;
+  if (signal)
+    void import('./model-link')
+      .then(({ modelLink }) => modelLink(report, signal))
+      .then((anchor) => {
+        if (anchor && !signal.aborted) actions.append(anchor);
+      })
+      .catch(() => {});
   const entry = { plate: report.plate, domain: report.domain };
   write('myoto-recent', [
     entry,

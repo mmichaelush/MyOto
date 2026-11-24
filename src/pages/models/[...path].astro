@@ -1,0 +1,223 @@
+---
+import Site from '../../layouts/Site.astro';
+import CatalogSource from '../../components/CatalogSource.astro';
+import Cohort from '../../components/Cohort.astro';
+import {
+  catalog,
+  count,
+  totals,
+  years,
+  type Make,
+  type Model,
+} from '../../data/catalog';
+type Props = { make: Make; model?: Model; year?: number };
+export function getStaticPaths() {
+  return catalog.makes.flatMap((make) => [
+    { params: { path: make.id }, props: { make } as Props },
+    ...make.models.flatMap((model) => [
+      {
+        params: { path: `${make.id}/${model.id}` },
+        props: { make, model } as Props,
+      },
+      ...years(model).map((year) => ({
+        params: { path: `${make.id}/${model.id}/${year}` },
+        props: { make, model, year } as Props,
+      })),
+    ]),
+  ]);
+}
+const { make, model, year } = Astro.props;
+const base = import.meta.env.BASE_URL + 'models/';
+const makeUrl = `${base}${make.id}/`;
+const modelUrl = model ? makeUrl + model.id + '/' : '';
+const all = model?.records ?? make.models.flatMap((entry) => entry.records);
+const rows = year ? all.filter((row) => row.year === year) : all;
+const sum = totals(rows);
+const title = [make.name, model?.name, year].filter(Boolean).join(' ');
+const yearRows = model
+  ? years(model).map((value) => ({
+      year: value,
+      ...totals(all.filter((row) => row.year === value)),
+    }))
+  : [];
+const peak = Math.max(1, ...yearRows.map((row) => row.active));
+---
+
+<Site title={title}>
+  <nav aria-label="מיקום בקטלוג" class="breadcrumbs">
+    <a href={base}>יצרנים ודגמים</a>
+    {model && <a href={makeUrl}>{make.name}</a>}
+    {year && model && (
+      <a href={modelUrl}>
+        <bdi>{model.name}</bdi>
+      </a>
+    )}
+  </nav>
+  <section class="panel catalog-heading">
+    <h1>
+      {make.name}
+      {model && (
+        <>
+          {' '}
+          <bdi>{model.name}</bdi>
+        </>
+      )}
+      {year && ` ${year}`}
+    </h1>
+    <dl class="grid-data">
+      <div class="datum">
+        <dt>כלי רכב פעילים</dt>
+        <dd>{count.format(sum.active)}</dd>
+      </div>
+      <div class="datum">
+        <dt>כלי רכב לא פעילים</dt>
+        <dd>{count.format(sum.inactive)}</dd>
+      </div>
+      <div class="datum">
+        <dt>שורות קוד דגם ושנת ייצור</dt>
+        <dd>{count.format(rows.length)}</dd>
+      </div>
+    </dl>
+  </section>
+  {!model && (
+    <section class="panel">
+      <h2>דגמים בקטלוג</h2>
+      <div class="model-grid">
+        {make.models.map((entry) => (
+          <a class="model-card" href={`${makeUrl}${entry.id}/`}>
+            <bdi>{entry.name}</bdi>{' '}
+            <span>{count.format(totals(entry.records).active)} פעילים</span>
+          </a>
+        ))}
+      </div>
+    </section>
+  )}
+  {model && !year && (
+    <section class="panel">
+      <h2>כלי רכב לפי שנת ייצור</h2>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">שנת ייצור</th>
+              <th scope="col">פעילים</th>
+              <th scope="col">לא פעילים</th>
+            </tr>
+          </thead>
+          <tbody>
+            {yearRows.map((row) => (
+              <tr>
+                <th scope="row">
+                  <a href={`${modelUrl}${row.year}/`}>{row.year}</a>
+                </th>
+                <td>
+                  {count.format(row.active)}
+                  <meter
+                    aria-label={`פעילים בשנת ${row.year}`}
+                    min="0"
+                    max={peak}
+                    value={row.active}
+                  ></meter>
+                </td>
+                <td>{count.format(row.inactive)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
+  {year && (
+    <section class="panel">
+      <h2>גרסאות וקודי דגם</h2>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">קוד</th>
+              <th scope="col">דגם רישוי</th>
+              <th scope="col">מפרטי קטלוג</th>
+              <th scope="col">פעילים</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr>
+                <th scope="row">
+                  {row.code} <bdi>{row.type}</bdi>
+                </th>
+                <td>
+                  <bdi>{row.name}</bdi>
+                </td>
+                <td>
+                  {row.variants.length ? (
+                    <ul>
+                      {row.variants.map(([trim, fuel, cc, automatic]) => (
+                        <li>
+                          <bdi>{trim ?? 'גימור לא ידוע'}</bdi> ·{' '}
+                          {fuel ?? 'דלק לא ידוע'}
+                          {cc ? ` · ${cc} סמ״ק` : ''}
+                          {Number(automatic) === 1 ? ' · גיר אוטומטי' : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    'מפרט לא זמין'
+                  )}
+                </td>
+                <td>{count.format(row.active)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
+  {model && year && (
+    <section class="panel">
+      <h2>שנתונים סמוכים</h2>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">שנת ייצור</th>
+              <th scope="col">פעילים</th>
+              <th scope="col">לא פעילים</th>
+            </tr>
+          </thead>
+          <tbody>
+            {yearRows
+              .filter((row) => Math.abs(year - row.year) <= 2)
+              .map((row) => (
+                <tr class:list={[{ different: year === row.year }]}>
+                  <th scope="row">
+                    <a href={`${modelUrl}${row.year}/`}>{row.year}</a>
+                  </th>
+                  <td>{count.format(row.active)}</td>
+                  <td>{count.format(row.inactive)}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
+  {model && year && <Cohort id={`${make.id}/${model.id}/${year}`} />}
+  {model && !year && make.models.length > 1 && (
+    <section class="panel">
+      <h2>דגמים נוספים של {make.name}</h2>
+      <div class="model-grid">
+        {make.models
+          .filter((item) => item.id !== model.id)
+          .slice(0, 6)
+          .map((item) => (
+            <a class="model-card" href={makeUrl + item.id + '/'}>
+              <bdi>{item.name}</bdi>
+            </a>
+          ))}
+      </div>
+      <a href={makeUrl}>כל דגמי {make.name}</a>
+    </section>
+  )}
+  <CatalogSource />
+</Site>
