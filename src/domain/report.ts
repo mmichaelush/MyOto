@@ -167,15 +167,13 @@ export function buildReport(
   const status =
     listed && (cancelled || inactive)
       ? 'conflicting'
-      : statusCoverage !== 'complete' ||
-          uncertainStatus ||
-          (identity && separated.has(identity))
+      : uncertainStatus || (identity && separated.has(identity))
         ? 'unknown'
         : cancelled
           ? 'cancelled'
           : inactive
             ? 'inactive'
-            : listed
+            : listed && statusCoverage === 'complete'
               ? 'listed'
               : 'unknown';
   const fields: Record<string, Field> = Object.create(null);

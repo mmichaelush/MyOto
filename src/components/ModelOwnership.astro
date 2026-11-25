@@ -27,25 +27,32 @@ const recorded = year
 
 {(options.length > 0 || recorded.length > 0) && (
   <section class="panel catalog-data">
-    <h2>סוגי בעלות רשומה</h2>
+    <h2>סוגי בעלות נוכחית</h2>
     {recorded.length > 0 && (
       <>
-        <p class="muted">
-          אחוזי בעלות בכל שנתון מחושבים בנפרד לפי המדגם הזמין.
-        </p>
         <div class="grid-data">
-          {recorded.map(({ year, sample }) => (
+          {recorded.flatMap(({ year, sample }) => [
             <Distribution
-              label={`שנתון ${year} · ${sample.n} רכבים במדגם`}
+              label={`בעלות · ${year} · ${sample.n} במדגם`}
               values={sample.ownership}
               total={sample.n}
-            />
-          ))}
+            />,
+            <Distribution
+              label={`צבע · ${year}`}
+              values={sample.colors}
+              total={sample.n}
+            />,
+          ])}
         </div>
       </>
     )}
     {options.length > 0 && (
-      <form hidden class="ownership-sample-form" data-model={model.name}>
+      <form
+        hidden
+        class="ownership-sample-form"
+        data-model={model.name}
+        data-autoload={year && !cohorts[`${path}/${year}`] ? 'true' : undefined}
+      >
         <div class="ownership-sample-controls">
           <label class="control">
             שנתון למדגם

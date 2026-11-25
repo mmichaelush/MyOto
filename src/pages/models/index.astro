@@ -2,6 +2,10 @@
 import Site from '../../layouts/Site.astro';
 import CatalogSource from '../../components/CatalogSource.astro';
 import { catalog, count } from '../../data/catalog';
+import {
+  powertrainFields,
+  powertrainValues,
+} from '../../data/catalog-powertrain';
 import { cohorts } from '../../data/cohorts';
 import '../../styles/catalog.css';
 const base = import.meta.env.BASE_URL + 'models/';
@@ -17,7 +21,17 @@ const ownershipTypes = [
         ) ?? [],
     ),
   ),
-].sort((a, b) => a.localeCompare(b, 'he'));
+].sort((a, b) => a.localeCompare(b, 'he', { numeric: true }));
+const powertrainOptions = powertrainFields.map(() => new Set<string>());
+for (const make of catalog.makes)
+  for (const model of make.models)
+    for (const row of model.records)
+      for (const spec of row.variants)
+        powertrainValues(spec)
+          .slice(1)
+          .forEach((value, index) => {
+            if (value) powertrainOptions[index].add(value);
+          });
 ---
 
 <Site title="יצרנים ודגמים בישראל">
@@ -86,6 +100,24 @@ const ownershipTypes = [
         במדגם.
       </small>
     </details>
+    <details class="catalog-facets" id="powertrain-facets">
+      <summary>סינון לפי מפרט, ארץ תוצר ואבזור</summary>
+      <div class="catalog-filters">
+        {powertrainFields.map(([key, label], index) => (
+          <label class="control">
+            {label}
+            <select data-powertrain={key}>
+              <option value="">הכול</option>
+              {[...powertrainOptions[index]]
+                .sort((a, b) => a.localeCompare(b, 'he', { numeric: true }))
+                .map((value) => (
+                  <option value={value}>{value}</option>
+                ))}
+            </select>
+          </label>
+        ))}
+      </div>
+    </details>
     <datalist id="model-names"></datalist>
     <p id="model-filter-status" role="status" class="muted"></p>
   </section>
@@ -116,6 +148,12 @@ const ownershipTypes = [
       ))}
     </div>
   </section>
+  <p>
+    <a href={import.meta.env.BASE_URL + 'fleet/'}>סטטיסטיקת כלי רכב</a>
+  </p>
+  <p>
+    <a href={import.meta.env.BASE_URL + 'engines/'}>קטלוג קודי מנוע</a>
+  </p>
   <CatalogSource />
 </Site>
 <script>
@@ -125,6 +163,7 @@ const ownershipTypes = [
     normalizeCatalogTerm,
     rankCatalog,
     type CatalogFacetIndex,
+    type PowertrainIndex,
     type CatalogSearchItem,
   } from '../../presentation/catalog-search';
   const input = document.querySelector<HTMLInputElement>('#model-filter')!;
@@ -144,6 +183,10 @@ const ownershipTypes = [
   let facetIndex: Promise<CatalogFacetIndex> | undefined;
   let current = 0;
   const count = new Intl.NumberFormat('he-IL');
+  const powertrain = [
+    ...document.querySelectorAll<HTMLSelectElement>('[data-powertrain]'),
+  ];
+  let powertrainIndex: Promise<PowertrainIndex> | undefined;
   async function loadIndex<T>(path: string): Promise<T> {
     const response = await fetch(base + path);
     if (!response.ok) throw new Error('Catalog index unavailable');
@@ -158,12 +201,14 @@ const ownershipTypes = [
       ? yearInput.value.trim()
       : inlineYear;
     const query = terms.filter((term) => term !== inlineYear).join(' ');
+    const selectedPowertrain = powertrain.map(({ value }) => value);
     if (
       !query &&
       !requestedYear &&
       !make.value &&
       !trim.value.trim() &&
-      !ownership.value
+      !ownership.value &&
+      !selectedPowertrain.some(Boolean)
     ) {
       makes.hidden = false;
       section.hidden = true;
@@ -189,13 +234,27 @@ const ownershipTypes = [
             },
           ))
         : undefined;
+    const specData = selectedPowertrain.some(Boolean)
+      ? (powertrainIndex ??= loadIndex<PowertrainIndex>(
+          'powertrain.json',
+        ).catch((error) => {
+          powertrainIndex = undefined;
+          throw error;
+        }))
+      : undefined;
     try {
-      const [list, data] = await Promise.all([index, facetData]);
+      const [list, data, specs] = await Promise.all([
+        index,
+        facetData,
+        specData,
+      ]);
       if (id !== current) return;
       const filters = {
         trim: selectedTrim,
         ownership: selectedOwnership,
         index: data,
+        powertrain: selectedPowertrain,
+        powertrainIndex: specs,
       };
       const matches = rankCatalog(
         list,
@@ -266,18 +325,38 @@ const ownershipTypes = [
   ownership.addEventListener('change', () => {
     void search();
   });
+  for (const control of powertrain)
+    control.addEventListener('change', () => void search());
   document.querySelector('#catalog-reset')?.addEventListener('click', () => {
     input.value = '';
     make.value = '';
     yearInput.value = '';
     trim.value = '';
     ownership.value = '';
+    for (const control of powertrain) control.value = '';
     input.focus();
     void search();
   });
-  const query = new URLSearchParams(location.search).get('q');
-  if (query) {
-    input.value = query;
-    void search();
+  const parameters = new URLSearchParams(location.search);
+  input.value = parameters.get('q') ?? '';
+  const makeId = parameters.get('make') ?? '';
+  if ([...make.options].some(({ value }) => value === makeId))
+    make.value = makeId;
+  const modelYear = parameters.get('year') ?? '';
+  if (/^\d{4}$/.test(modelYear)) yearInput.value = modelYear;
+  for (const control of powertrain) {
+    const value = parameters.get(control.dataset.powertrain!) ?? '';
+    if ([...control.options].some((option) => option.value === value))
+      control.value = value;
   }
+  if (powertrain.some(({ value }) => value))
+    document.querySelector<HTMLDetailsElement>('#powertrain-facets')!.open =
+      true;
+  if (
+    input.value ||
+    make.value ||
+    yearInput.value ||
+    powertrain.some(({ value }) => value)
+  )
+    void search();
 </script>

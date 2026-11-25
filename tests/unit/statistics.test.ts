@@ -1,5 +1,9 @@
 import { expect, test } from 'vitest';
-import { mileageSummary, sampleWindows } from '../../src/domain/statistics';
+import {
+  mileagePercentileRange,
+  mileageSummary,
+  sampleWindows,
+} from '../../src/domain/statistics';
 
 test('centers disjoint samples across all strata, or selects the whole small cohort', () => {
   expect(sampleWindows(100, 20, 4)).toEqual(
@@ -25,4 +29,17 @@ test('interpolates quartiles and permanently discards disagreeing readings', () 
     p75: 33,
   });
   expect(mileageSummary(rows, 5)).toBeNull();
+});
+
+test('publishes grouped mileage bounds with at least five observations per band', () => {
+  const rows = Array.from({ length: 22 }, (_, index) => ({
+    mispar_rechev: index + 1,
+    kilometer_test_aharon: index < 10 ? 10000 : index < 20 ? 30000 : 90000,
+  }));
+  const summary = mileageSummary(rows, 20, true);
+  expect(summary?.bands).toEqual([
+    [20000, 10],
+    [100000, 12],
+  ]);
+  expect(mileagePercentileRange(30000, summary!.bands!, 22)).toEqual([45, 100]);
 });

@@ -9,6 +9,8 @@ export type ModelSpecifications = {
   towUnbraked?: number;
   pollution?: number;
   safety?: number;
+  feeGroup?: number;
+  country?: string;
 };
 
 export type ModelSpecification = [

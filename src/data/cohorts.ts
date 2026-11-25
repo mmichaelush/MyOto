@@ -10,7 +10,13 @@ type Cohort = {
   ownershipByTrim?: [string, string, number][];
   fuel: [string, number][];
   trims: [string, number][];
-  mileage: { n: number; p25: number; median: number; p75: number } | null;
+  mileage: {
+    n: number;
+    p25: number;
+    median: number;
+    p75: number;
+    bands?: [number, number][];
+  } | null;
 };
 export const cohorts = data.cohorts as unknown as Record<
   string,

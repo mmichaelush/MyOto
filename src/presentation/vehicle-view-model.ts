@@ -1,11 +1,14 @@
 import { modelFilter, resources } from '../data/sources';
 import type { Reply, Row, Scalar } from '../data/types';
 import {
+  dateOrder,
   displayValue,
   fieldLabels,
   expiredDays,
   ownershipDate,
 } from '../domain/format';
+import { annualBaseFee, effectiveFeeSchedule } from '../domain/licensing-fees';
+import { inspectionRates } from '../domain/inspection-fees';
 import { formatPlate } from '../domain/plate';
 import { issueText } from '../domain/diagnostics';
 import { fieldPriority, type Observation, type Report } from '../domain/report';
@@ -15,7 +18,7 @@ export type VehicleKind = 'car' | 'motorcycle' | 'truck' | 'bus' | 'equipment';
 export const statusLabels = {
   listed: 'רכב פעיל',
   inactive: 'רישום לא פעיל',
-  cancelled: 'הרישום בוטל',
+  cancelled: 'הרכב ירד מהכביש',
   conflicting: 'מידע סותר על מצב הרישוי',
   unknown: 'מצב הרישוי לא אומת',
 };
@@ -133,7 +136,7 @@ const rules: Record<string, Partial<DisplayRule>> = {
     kinds: ['equipment'],
     icon: 'clipboard-check',
   },
-  baalut: { label: 'בעלות רשומה', order: 20, icon: 'users' },
+  baalut: { label: 'בעלות נוכחית', order: 20, icon: 'users' },
   mkoriut_nm: { category: 'registration', order: 21 },
   mivchan_acharon_dt: { label: 'מבחן רישוי אחרון', order: 24 },
   moed_aliya_lakvish: { label: 'עלייה לכביש', order: 25 },
@@ -164,11 +167,12 @@ const rules: Record<string, Partial<DisplayRule>> = {
     unit: 'סמ״ק',
   },
   koah_sus: {
-    keys: ['koah_sus', 'hespek'],
+    keys: ['koah_sus'],
     label: 'הספק מנוע',
     order: 20,
     unit: 'כ״ס',
   },
+  hespek: { category: 'engine', label: 'הספק כפי שדווח', order: 21 },
   sug_delek_nm: {
     keys: ['sug_delek_nm', 'delek_nm'],
     label: 'סוג דלק',
@@ -278,7 +282,11 @@ function fieldRow(
   const { fields, identity } = report;
   const observations = rule.keys.flatMap((key) => {
     const field = fields[key];
-    return field ? [field.chosen, ...field.alternatives] : [];
+    return field
+      ? [field.chosen, ...field.alternatives].filter(
+          (entry) => rule.id !== 'koah_sus' || Number(entry.value) > 0,
+        )
+      : [];
   });
   const first = observations.reduce<Observation | undefined>(
     (preferred, candidate) =>
@@ -358,6 +366,145 @@ function catalogRows(report: Report) {
   return exact.length ? exact : variants;
 }
 
+export function licensingFeeParameters(
+  report: Report,
+  today = new Date(),
+): URLSearchParams {
+  const parameters = new URLSearchParams();
+  if (report.identity !== 'private_cars_1' || report.status === 'conflicting')
+    return parameters;
+
+  const registration = report.fields.moed_aliya_lakvish;
+  if (
+    registration &&
+    !registration.conflicting &&
+    registration.chosen.source === report.identity
+  ) {
+    const date = /^((?:19|20)\d{2})-(?:0?[1-9]|1[0-2])$/.exec(
+      String(registration.chosen.value),
+    );
+    if (date && Number(date[1]) <= today.getFullYear())
+      parameters.set('year', date[1]);
+  }
+
+  const registryGroup = report.fields.kvuzat_agra_cd;
+  const group = String(registryGroup?.chosen.value ?? '');
+  if (
+    registryGroup?.chosen.source === report.identity &&
+    !registryGroup.conflicting &&
+    /^[1-7]$/.test(group)
+  ) {
+    parameters.set('group', group);
+    return parameters;
+  }
+  const modelSource = report.sources.modelDetails;
+  let reportedGroup = false;
+  if (modelSource && !modelSource.issue) {
+    const groups = new Set(
+      catalogRows(report).map((row) => String(row.kvuzat_agra_cd ?? '')),
+    );
+    reportedGroup = [...groups].some((value) => /^[1-7]$/.test(value));
+    const [group] = groups;
+    if (groups.size === 1 && /^[1-7]$/.test(group))
+      parameters.set('group', group);
+  }
+  // The 2026 price brackets apply to models first registered in 2026.
+  const schedule = effectiveFeeSchedule(today);
+  const importers = report.sources.importers;
+  if (
+    !parameters.has('group') &&
+    !reportedGroup &&
+    schedule?.year === 2026 &&
+    parameters.get('year') === '2026' &&
+    importers &&
+    !importers.issue
+  ) {
+    const thresholds = [117000, 141000, 167000, 188000, 244000, 347000];
+    const groups = new Set(
+      importers.rows.map(({ mehir }) => {
+        if (typeof mehir !== 'number' || !Number.isFinite(mehir) || mehir <= 0)
+          return 0;
+        const band = thresholds.findIndex((end) => mehir <= end);
+        return band < 0 ? 7 : band + 1;
+      }),
+    );
+    const [group] = groups;
+    if (groups.size === 1 && group) parameters.set('group', String(group));
+  }
+  return parameters;
+}
+
+export function estimatedLicensingFee(
+  report: Report,
+  parameters?: URLSearchParams,
+  today = new Date(),
+) {
+  parameters ??= licensingFeeParameters(report, today);
+  const schedule = effectiveFeeSchedule(today);
+  if (!schedule) return;
+  if (['cancelled', 'inactive', 'conflicting'].includes(report.status)) return;
+  const field = (key: string) => {
+    const observation = report.fields[key];
+    return observation?.chosen.source === report.identity &&
+      !observation?.conflicting
+      ? observation?.chosen.value
+      : undefined;
+  };
+  const fuel = field('sug_delek_nm');
+  if (
+    report.identity === 'twoWheeled' &&
+    /^L[1-5]$/.test(String(field('sug_rechev_EU_cd')))
+  ) {
+    if (fuel === 'חשמל')
+      return annualBaseFee({ kind: 'motorcycle', band: 3 }, schedule);
+    const volume = Number(field('nefach_manoa'));
+    if (fuel === 'בנזין' && Number.isSafeInteger(volume) && volume > 0)
+      return annualBaseFee(
+        {
+          kind: 'motorcycle',
+          band: volume <= 50 ? 0 : volume <= 150 ? 1 : 2,
+        },
+        schedule,
+      );
+  }
+  if (
+    report.identity === 'publicTransport' &&
+    /^(?:אוטובוס|טיולית)(?:\s|$)/.test(String(field('sug_rechev_nm'))) &&
+    (fuel === 'בנזין' || fuel === 'דיזל')
+  )
+    return annualBaseFee(
+      { kind: 'bus', band: fuel === 'דיזל' ? 1 : 0 },
+      schedule,
+    );
+  const weight = Number(field('mishkal_kolel'));
+  if (
+    report.identity === 'heavy' &&
+    /^N[23]$/.test(String(field('tkina_EU'))) &&
+    Number.isSafeInteger(weight) &&
+    weight > 3500
+  ) {
+    if (fuel === 'בנזין')
+      return annualBaseFee({ kind: 'heavy', band: 3 }, schedule);
+    if (fuel === 'דיזל')
+      return annualBaseFee(
+        {
+          kind: 'heavy',
+          band: weight <= 16000 ? 0 : weight <= 20000 ? 1 : 2,
+        },
+        schedule,
+      );
+  }
+  const base = annualBaseFee(
+    {
+      kind: 'light',
+      group: Number(parameters.get('group')),
+      year: Number(parameters.get('year')),
+    },
+    schedule,
+  );
+  return base === undefined ? undefined : base + schedule.broadcasting;
+}
+
 function catalogField(rule: DisplayRule, variants: Row[]): DataRow | undefined {
   if (
     rule.category === 'registration' ||
@@ -368,7 +515,9 @@ function catalogField(rule: DisplayRule, variants: Row[]): DataRow | undefined {
     const value = rule.keys
       .map((key) => variant[key])
       .find((raw) => raw !== undefined && raw !== null && raw !== '');
-    return value === undefined ? undefined : textFor(rule.id, value, rule.unit);
+    return value === undefined || (rule.id === 'koah_sus' && Number(value) <= 0)
+      ? undefined
+      : textFor(rule.id, value, rule.unit);
   });
   const values = [
     ...new Set(
@@ -382,10 +531,6 @@ function catalogField(rule: DisplayRule, variants: Row[]): DataRow | undefined {
     text: values.join(' · '),
     icon: rule.icon ?? fieldIcon(rule.id, categories[rule.category].icon),
     scope: 'model',
-    help:
-      values.length > 1 || readings.some((value) => value === undefined)
-        ? 'מפרט הדגם כולל כמה גרסאות או רשומות חסרות. יש לבדוק את הנתון ברישיון הרכב.'
-        : 'מפרט לפי קוד דגם ושנתון במשרד התחבורה. הנתון המחייב לרכב הוא זה שברישיון.',
   };
 }
 
@@ -465,7 +610,11 @@ function supplement(
                   {
                     id: key,
                     label,
-                    text: displayValue(key, value),
+                    text:
+                      key === 'SUG TAV'
+                        ? ({ '1': 'רגיל', '2': 'כיסא גלגלים' }[String(value)] ??
+                          'סוג לא ידוע')
+                        : displayValue(key, value),
                     icon: fieldIcon(key, icon),
                   },
                 ]
@@ -500,7 +649,7 @@ const supplements = [
     'disabledPermit',
     'תג חניה לנכה',
     'clipboard-check',
-    { 'TAARICH HAFAKAT TAG': 'תאריך הנפקה', 'SUG TAV': 'קוד תג' },
+    { 'TAARICH HAFAKAT TAG': 'תאריך הנפקה', 'SUG TAV': 'סוג תג' },
     false,
   ],
   [
@@ -535,6 +684,85 @@ export function vehicleViewModel(report: Report, today = new Date()) {
     const row = rule && fieldRow(rule, report, today);
     if (row) highlights.push(row);
   }
+  const params = licensingFeeParameters(report, today);
+  const fee = estimatedLicensingFee(report, params, today);
+  const schedule = effectiveFeeSchedule(today);
+  const group = params.get('group');
+  if (fee !== undefined && schedule)
+    highlights.push({
+      id: 'estimated-fee',
+      label: 'אגרת רישוי משוערת',
+      text: new Intl.NumberFormat('he-IL', {
+        style: 'currency',
+        currency: 'ILS',
+        maximumFractionDigits: 0,
+      }).format(fee),
+      icon: 'wallet',
+      help: `תעריף בתוקף מ־${schedule.effectiveFrom}${group ? ` · קבוצה ${group}` : ''}`,
+    });
+  const registryValue = (field: string) => {
+    const observation = report.fields[field];
+    return observation?.chosen.source === report.identity &&
+      !observation?.conflicting
+      ? observation?.chosen.value
+      : undefined;
+  };
+  const fuel = registryValue('sug_delek_nm') ?? registryValue('delek_nm');
+  const weight = Number(registryValue('mishkal_kolel'));
+  const vehicleType = String(registryValue('sug_rechev_nm') ?? '');
+  const category =
+    report.identity === 'private_cars_1' ||
+    /^מונית(?:\s|$)|^אוטובוס זעיר(?:\s|$)/.test(vehicleType)
+      ? 'light'
+      : report.identity === 'publicTransport' &&
+          /^אוטובוס(?:\s|$)/.test(vehicleType)
+        ? 'heavy'
+        : report.identity === 'heavy' &&
+            /^N[23]$/.test(String(registryValue('tkina_EU'))) &&
+            weight > 3500
+          ? weight > 8000
+            ? 'heavy'
+            : 'light'
+          : report.identity === 'twoWheeled' &&
+              /^L[1-5]$/.test(String(registryValue('sug_rechev_EU_cd')))
+            ? 'motorcycle'
+            : undefined;
+  const rate =
+    fuel &&
+    inspectionRates.find(([name]) => name === category)?.[
+      fuel === 'חשמל' ? 3 : 2
+    ];
+  if (
+    typeof rate === 'number' &&
+    today >= new Date('2026-05-31T21:00:00Z') &&
+    !['cancelled', 'inactive', 'conflicting'].includes(report.status)
+  )
+    highlights.push({
+      id: 'inspection-price',
+      label: 'מחיר מבחן במכון',
+      text: new Intl.NumberFormat('he-IL', {
+        style: 'currency',
+        currency: 'ILS',
+      }).format(rate),
+      icon: 'calendar-days',
+      help: 'תעריף למבחן ראשון, אם נדרש טסט. אגרת הרישוי מחושבת בנפרד.',
+    });
+  const validity = report.fields.tokef_dt;
+  const value = validity?.chosen.value;
+  const validityDays =
+    value != null &&
+    !validity?.conflicting &&
+    /^\d{4}(?:-\d{2}-\d{2}|\d{4})(?:$|[T ])/.test(String(value)) &&
+    dateOrder(value)
+      ? expiredDays(value, today)
+      : undefined;
+  const statusStyle =
+    !['inactive', 'cancelled', 'conflicting'].includes(report.status) &&
+    validityDays !== undefined
+      ? validityDays > 0
+        ? 'expired'
+        : 'valid'
+      : report.status;
   const alerts: string[] = [];
   if (report.separated.length)
     alerts.push(
@@ -565,17 +793,60 @@ export function vehicleViewModel(report: Report, today = new Date()) {
     alerts.push(
       `ברישומי הלוחית מופיעה בעלות מסוג סוחר ב־${dealerPeriods} תקופות שונות. כדאי לעיין בהיסטוריית הבעלויות ולבקש תיעוד.`,
     );
+  const owners = report.ownership.filter(
+    ({ baalut }) =>
+      typeof baalut === 'string' &&
+      baalut.trim() &&
+      !/^סוחר(?:\s|$)/.test(baalut.trim()),
+  );
+  if (owners.length && !report.sources.history_2?.issue)
+    highlights.push({
+      id: 'ownership-count',
+      label: 'ידיים רשומות',
+      text: String(owners.length),
+      icon: 'users',
+    });
+  const hands = new Map(
+    [...owners].reverse().map((row, index) => [row, index + 1]),
+  );
   if (report.ownership.length)
     tables.push({
       id: 'ownership-history',
       title: 'היסטוריית בעלויות',
       icon: 'users',
-      labels: ['מועד', 'סוג בעלות'],
-      rows: report.ownership.map((row) => [
-        ownershipDate(row.baalut_dt ?? null),
-        String(row.baalut ?? 'לא זמין'),
-      ]),
-      note: `${report.ownership.length} רישומי בעלות לפי מספר הלוחית. מאגר הבעלות אינו מוסר מספר שלדה. כשנמסרה תקופה, מוצג טווח החודשים.`,
+      labels: ['מועד', 'סוג בעלות', 'משך משוער', 'יד'],
+      rows: report.ownership.map((row, index) => {
+        const start = dateOrder(row.baalut_dt);
+        const end = index
+          ? dateOrder(report.ownership[index - 1]?.baalut_dt)
+          : today.valueOf();
+        const from = new Date(start);
+        const to = new Date(end);
+        const months =
+          (to.getUTCFullYear() - from.getUTCFullYear()) * 12 +
+          to.getUTCMonth() -
+          from.getUTCMonth();
+        const years = Math.floor(months / 12);
+        const remainder = months % 12;
+        const duration = [
+          years === 1 ? 'שנה' : years > 1 ? `${years} שנים` : '',
+          remainder === 1 ? 'חודש' : remainder > 1 ? `${remainder} חודשים` : '',
+        ]
+          .filter(Boolean)
+          .join(remainder > 1 ? ' ו־' : ' ו');
+        return [
+          ownershipDate(row.baalut_dt ?? null),
+          String(row.baalut ?? 'לא זמין'),
+          start &&
+          end &&
+          months > 0 &&
+          (index > 0 || report.status === 'listed')
+            ? duration
+            : '—',
+          hands.has(row) ? `יד ${hands.get(row)}` : '',
+        ];
+      }),
+      note: 'לפי מספר רישוי · סוחר לא נספר כיד.',
     });
   const additional = supplements
     .flatMap(([id, title, icon, map, allowMapped]) => {
@@ -585,27 +856,79 @@ export function vehicleViewModel(report: Report, today = new Date()) {
         : [];
     })
     .filter((section) => section.groups.length);
-  const history = report.sources.history_1?.rows;
-  if (history?.length && report.unverified.includes('history_1')) {
-    const section = supplement(
-      'history-by-plate',
-      'נסועה ושינויי מבנה לפי לוחית',
-      'gauge',
-      history,
-      {
-        kilometer_test_aharon: 'קריאת נסועה אחרונה',
-        rishum_rishon_dt: 'רישום ראשון',
-      },
-      true,
-    );
-    if (section.groups.length)
-      additional.unshift({
-        ...section,
-        note: 'מאגר הנסועה מוסר רישום לפי מספר הלוחית, ללא מזהה משותף שמאשר שזה הרכב שבדוח. מועד קריאת הנסועה לא נמסר.',
-      });
-  }
+  const history = report.sources.history_1;
+  const mileage = [
+    ...new Set(
+      (history?.rows ?? [])
+        .map(({ kilometer_test_aharon }) => Number(kilometer_test_aharon))
+        .filter((value) => Number.isSafeInteger(value) && value > 0),
+    ),
+  ];
+  if (report.identity && mileage.length === 1)
+    tables.push({
+      id: 'odometer-history',
+      title: 'היסטוריית קילומטרים',
+      icon: 'gauge',
+      labels: ['תאריך', 'קילומטרים', 'הפרש'],
+      rows: [['—', new Intl.NumberFormat('he-IL').format(mileage[0]), '—']],
+      note: 'קריאה אחרונה לפי מספר רישוי. המאגר אינו מוסר את תאריך הקריאה.',
+    });
   const primary = report.identity ? report.sources[report.identity] : undefined;
+  const registration = report.fields.moed_aliya_lakvish;
+  const registrationMonth = String(registration?.chosen.value ?? '').replace(
+    /^(\d{4})-(\d)$/,
+    '$1-0$2',
+  );
+  const [registrationYear, registrationMonthNumber] = registrationMonth
+    .split('-')
+    .map(Number);
+  const nowParts = new Intl.DateTimeFormat('sv-SE', {
+    year: 'numeric',
+    month: '2-digit',
+    timeZone: 'Asia/Jerusalem',
+  })
+    .format(today)
+    .split('-')
+    .map(Number);
+  const age =
+    (nowParts[0] - registrationYear) * 12 +
+    nowParts[1] -
+    registrationMonthNumber;
+  const registrationAge =
+    registration &&
+    !registration.conflicting &&
+    registration.chosen.source === report.identity &&
+    /^\d{4}-(?:0[1-9]|1[0-2])$/.test(registrationMonth) &&
+    age >= 0
+      ? [
+          Math.floor(age / 12) ? `${Math.floor(age / 12)} שנים` : '',
+          age % 12 ? `${age % 12} חודשים` : '',
+        ]
+          .filter(Boolean)
+          .join(' · ') || 'פחות מחודש'
+      : undefined;
   const shown = new Set(highlights.map(({ id }) => id));
+  const firstOwner = owners.findLast(({ baalut_dt }) => dateOrder(baalut_dt));
+  const recallSource = report.sources.recall;
+  const registrationRows: DataRow[] = [];
+  if (firstOwner && !report.sources.history_2?.issue)
+    registrationRows.push({
+      id: 'first-ownership',
+      label: 'סוג בעלות ראשונה',
+      text: String(firstOwner.baalut),
+      icon: 'users',
+    });
+  if (report.domain === 'registration' && recallSource)
+    registrationRows.push({
+      id: 'recall-status',
+      label: 'קריאת שירות (ריקול)',
+      text: report.recalls.length
+        ? 'נמצאה קריאת ריקול שלא בוצעה'
+        : recallSource.issue
+          ? 'בדיקת ריקול לא זמינה'
+          : 'לא נמצאה קריאת ריקול פתוחה במאגר ההגבלות',
+      icon: 'triangle-alert',
+    });
   const sections = baseSections(report, kind).flatMap((section) => {
     const groups = section.groups
       .map((group) =>
@@ -618,6 +941,15 @@ export function vehicleViewModel(report: Report, today = new Date()) {
         ),
       )
       .filter((group) => group.length);
+    if (section.id === 'registration' && registrationAge && groups[0])
+      groups[0].push({
+        id: 'vehicle-age',
+        label: 'גיל הרכב',
+        text: registrationAge,
+        icon: 'calendar-days',
+      });
+    if (section.id === 'registration' && registrationRows.length)
+      groups.push(registrationRows);
     return groups.length ? [{ ...section, groups }] : [];
   });
   return {
@@ -631,12 +963,17 @@ export function vehicleViewModel(report: Report, today = new Date()) {
     ]
       .filter(Boolean)
       .join(' · '),
+    statusStyle,
     status:
-      report.domain === 'registration'
-        ? report.statusCoverage === 'pending'
-          ? 'בודק מצב רישוי…'
-          : statusLabels[report.status]
-        : undefined,
+      report.domain !== 'registration'
+        ? undefined
+        : statusStyle === 'expired'
+          ? 'תוקף הרישוי פג'
+          : statusStyle === 'valid'
+            ? 'רישוי בתוקף'
+            : report.statusCoverage === 'pending' && statusStyle === 'unknown'
+              ? 'בודק מצב רישוי…'
+              : statusLabels[statusStyle],
     updated: sourceDate(primary?.upstreamUpdatedAt),
     retrieved: sourceDate(primary?.fetchedAt),
     highlights,

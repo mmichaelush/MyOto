@@ -2,11 +2,11 @@ import { VehicleEngine } from '../data/engine';
 import { displayValue } from '../domain/format';
 import { formatPlate, parsePlate } from '../domain/plate';
 import type { Report } from '../domain/report';
+import { csvBlob } from './csv';
 import { button, element, link } from './dom';
 import {
   baseSections,
   categories,
-  statusLabels,
   vehicleName,
   vehicleViewModel,
   type DataRow,
@@ -14,7 +14,7 @@ import {
 import { dataTable, sourceDetails } from './report';
 import { renderRecall } from './recall-panel';
 import { mark } from './icons';
-import { logFailure, logLookup } from './diagnostics';
+import { diagnosticPanel, logFailure, logLookup } from './diagnostics';
 
 const engine = new VehicleEngine();
 const form = document.querySelector<HTMLFormElement>('#compare')!;
@@ -25,7 +25,7 @@ const highlights = [
   ['shnat_yitzur', 'שנת ייצור'],
   ['ramat_gimur', 'רמת גימור'],
   ['kilometer_test_aharon', 'קריאת נסועה אחרונה'],
-  ['baalut', 'בעלות רשומה'],
+  ['baalut', 'בעלות נוכחית'],
   ['tokef_dt', 'תוקף רישיון'],
 ];
 
@@ -70,7 +70,7 @@ function snapshot(report: Report, side: string) {
     }
     data.append(
       element('dt', 'סטטוס רישוי'),
-      element('dd', statusLabels[report.status]),
+      element('dd', vehicleViewModel(report).status ?? '—'),
     );
   }
   if (
@@ -129,7 +129,9 @@ function comparison(reports: Report[], signal: AbortSignal) {
   const share = mark(
     button('העתקת קישור להשוואה', async () => {
       try {
-        await navigator.clipboard.writeText(location.href);
+        const shared = new URL(location.href);
+        shared.searchParams.delete('debug');
+        await navigator.clipboard.writeText(shared.href);
         if (!signal.aborted) status.textContent = 'קישור ההשוואה הועתק.';
       } catch (error) {
         if (!signal.aborted) {
@@ -156,9 +158,32 @@ function comparison(reports: Report[], signal: AbortSignal) {
     comparisonFields(report, views[index].additional),
   );
   const ids = new Set(sides.flatMap((entries) => [...entries.keys()]));
+  const csvRows = [
+    ['נושא', 'מאפיין', ...reports.map((report) => formatPlate(report.plate))],
+  ];
   for (const key of ids) {
     const entries = sides.map((side) => side.get(key)?.rows ?? []);
     const field = sides[0].get(key) ?? sides[1].get(key)!;
+    csvRows.push([
+      field.title,
+      field.rows[0].label,
+      ...entries.map(
+        (values) =>
+          values
+            .map((entry) =>
+              [
+                entry.text,
+                entry.scope === 'model' ? 'לפי מפרט הדגם' : '',
+                ...(entry.differences ?? []).map(
+                  ({ text, source }) => text + ' · ' + source,
+                ),
+              ]
+                .filter(Boolean)
+                .join(' · '),
+            )
+            .join(' | ') || 'לא זמין',
+      ),
+    ]);
     let group = groups.get(field.section);
     if (!group) {
       group = table.createTBody();
@@ -195,8 +220,6 @@ function comparison(reports: Report[], signal: AbortSignal) {
       for (const entry of values) {
         const value = element('div');
         value.append(element('bdi', entry.text));
-        if (entry.scope === 'model')
-          value.append(element('small', 'לפי מפרט הדגם'));
         if (entry.differences) {
           const alternatives = element('details');
           alternatives.append(element('summary', 'ערכים שונים במקורות'));
@@ -209,6 +232,18 @@ function comparison(reports: Report[], signal: AbortSignal) {
         cell.append(value);
       }
     }
+  }
+  if (
+    sides.some((side) =>
+      [...side.values()].some(({ rows }) =>
+        rows.some(({ scope }) => scope === 'model'),
+      ),
+    )
+  ) {
+    const row = table.createTFoot().insertRow();
+    const note = row.insertCell();
+    note.colSpan = 3;
+    note.textContent = 'שדות חסרים במרשם הושלמו ממפרט הדגם הזמין.';
   }
   const differenceCount = table.querySelectorAll('tr.different').length;
   const summary = element(
@@ -232,6 +267,28 @@ function comparison(reports: Report[], signal: AbortSignal) {
     });
     toggle.setAttribute('aria-pressed', 'false');
     tools.append(toggle);
+  }
+  if (ids.size) {
+    tools.append(
+      mark(
+        button('ייצוא השוואה ל־CSV', () => {
+          try {
+            const url = URL.createObjectURL(csvBlob(csvRows));
+            const anchor = link('', url);
+            anchor.download = 'myoto-comparison.csv';
+            try {
+              anchor.click();
+            } finally {
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }
+          } catch (error) {
+            logFailure('export-comparison', error);
+            status.textContent = 'לא ניתן להוריד את קובץ ההשוואה בדפדפן זה.';
+          }
+        }),
+        'download',
+      ),
+    );
   }
   const scroll = element('div', undefined, 'table-scroll');
   scroll.setAttribute('role', 'region');
@@ -293,7 +350,9 @@ async function compare(updateUrl: boolean) {
   }
   if (updateUrl) {
     const url = new URL(location.href);
+    const debug = url.searchParams.get('debug');
     url.search = new URLSearchParams({ a, b }).toString();
+    if (debug === '1') url.searchParams.set('debug', debug);
     try {
       if (url.href !== location.href) history.pushState(null, '', url);
     } catch (error) {
@@ -310,6 +369,8 @@ async function compare(updateUrl: boolean) {
     if (controller.signal.aborted) return;
     logLookup('comparison', reports);
     comparison(reports, controller.signal);
+    const diagnostics = diagnosticPanel('comparison', reports);
+    if (diagnostics) result.append(diagnostics);
     result.hidden = false;
     status.textContent = Object.values(reports).some((report) =>
       Object.values(report.sources).some((source) => source.issue),

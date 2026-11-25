@@ -1,0 +1,106 @@
+﻿---
+import Site from '../layouts/Site.astro';
+import { resources } from '../data/sources';
+import '../styles/catalog.css';
+---
+
+<Site title="איתור סוחרי רכב מורשים">
+  <section class="panel catalog-heading">
+    <h1>איתור סוחרי רכב מורשים</h1>
+    <form id="dealer-search" hidden>
+      <div class="grid-data">
+        <label class="control">
+          שם העסק <input class="text-input" name="name" maxlength="100" />
+        </label>
+        <label class="control">
+          יישוב <input class="text-input" name="city" maxlength="60" />
+        </label>
+      </div>
+      <button>איתור סוחרים</button>
+    </form>
+    <p id="dealer-status" role="status"></p>
+    <div id="dealer-results" class="grid-data"></div>
+    <p>
+      <a href="https://www.gov.il/he/service/licensed_auto_dealers">
+        איתור רשמי של משרד התחבורה
+      </a>{' '}
+      · <a href={resources.dealers.url}>מקור הנתונים</a>
+    </p>
+  </section>
+</Site>
+
+<script>
+  import { resources } from '../data/sources';
+  import { element } from '../ui/dom';
+  import { directoryKey, readDirectory } from '../ui/public-directory';
+
+  const form = document.querySelector<HTMLFormElement>('#dealer-search')!;
+  const status = document.querySelector<HTMLElement>('#dealer-status')!;
+  const results = document.querySelector<HTMLElement>('#dealer-results')!;
+  const fields = ['shem', 'yishuv', 'ktovet'] as const;
+  type Row = Record<(typeof fields)[number], unknown>;
+  let directory: Row[] | undefined;
+  let active: AbortController | undefined;
+  const text = (value: unknown) =>
+    typeof value === 'string' ? value.trim() : '';
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    active?.abort();
+    const request = new AbortController();
+    active = request;
+    const filters = new FormData(form);
+    const name = directoryKey(String(filters.get('name') ?? ''));
+    const city = directoryKey(String(filters.get('city') ?? ''));
+    results.replaceChildren();
+    if (!name && !city) {
+      status.textContent = 'הקלידו שם עסק או יישוב.';
+      return;
+    }
+    status.textContent = 'מחפש במאגר משרד התחבורה…';
+    try {
+      directory ??= await readDirectory(
+        resources.dealers.id,
+        fields,
+        request.signal,
+      );
+      if (request.signal.aborted) return;
+      const seen = new Set<string>();
+      const matches = directory
+        .flatMap((row) => {
+          if (!row) return [];
+          const title = text(row.shem);
+          const town = text(row.yishuv);
+          const address = text(row.ktovet);
+          if (
+            !title ||
+            !directoryKey(title).includes(name) ||
+            !directoryKey(town).includes(city)
+          )
+            return [];
+          const id = JSON.stringify([title, town, address]);
+          if (seen.has(id)) return [];
+          seen.add(id);
+          return [{ title, town, address }];
+        })
+        .sort((a, b) => a.title.localeCompare(b.title, 'he'));
+      for (const { title, town, address } of matches.slice(0, 100)) {
+        const card = element('article', undefined, 'datum');
+        card.append(element('h2', title));
+        const location = [town, address].filter(Boolean).join(' · ');
+        if (location) card.append(element('p', location));
+        results.append(card);
+      }
+      status.textContent =
+        matches.length > 100
+          ? `נמצאו ${matches.length} סוחרים. מוצגות 100 תוצאות.`
+          : matches.length
+            ? `נמצאו ${matches.length} סוחרים.`
+            : 'לא נמצאו סוחרים תואמים.';
+    } catch {
+      if (!request.signal.aborted)
+        status.textContent = 'המאגר אינו זמין כרגע. אפשר להשתמש באיתור הרשמי.';
+    }
+  });
+  form.hidden = false;
+</script>

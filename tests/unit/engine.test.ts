@@ -155,7 +155,9 @@ test('shares a lookup, cancels a subscriber and caches the successful reply', as
   release(valid([{ mispar_rechev: 123456 }]));
   await rejected;
   expect(await second).toMatchObject({ rows: [{ mispar_rechev: 123456 }] });
-  await client.lookup(resources.private_cars_1, query, keep);
+  expect(
+    await client.lookup(resources.private_cars_1, query, keep),
+  ).toMatchObject({ cached: true });
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
 

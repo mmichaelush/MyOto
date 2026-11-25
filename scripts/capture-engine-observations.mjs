@@ -3,13 +3,16 @@ import { setTimeout } from 'node:timers/promises';
 import resources from '../src/data/resources.json' with { type: 'json' };
 import { verifiedEngineRows } from './diff-vehicle-observations.mjs';
 
-const [output, previousPath] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const full = args[0] === '--full';
+const [output, previousPath] = full ? args.slice(1) : args;
 if (!output)
   throw new Error(
-    'Usage: node scripts/capture-engine-observations.mjs output.json [previous.json]',
+    'Usage: node scripts/capture-engine-observations.mjs [--full] output.json [previous.json]',
   );
 const source = resources.heavy.id;
 const sampleLimit = 250;
+const scanLimit = 10000;
 const lookupLimit = 50;
 const timestamp = new Date();
 const date = new Intl.DateTimeFormat('en-CA', {
@@ -21,23 +24,38 @@ const month = ['year', 'month']
   .map((type) => date.find((part) => part.type === type).value)
   .join('-');
 
-async function rows(plates) {
-  const url = new URL('https://data.gov.il/api/3/action/datastore_search');
-  url.search = new URLSearchParams({
+async function read(action, query) {
+  const url = new URL(action, 'https://data.gov.il/api/3/action/');
+  url.search = new URLSearchParams(query);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
+      if (!response.ok)
+        throw new Error(`Engine source returned HTTP ${response.status}`);
+      const body = await response.json();
+      if (body.success !== true || !body.result)
+        throw new Error('Unexpected CKAN response');
+      return body.result;
+    } catch (error) {
+      if (attempt >= 2) throw error;
+      await setTimeout(800 * 2 ** attempt);
+    }
+  }
+}
+
+async function rows(plates, offset = 0, limit = sampleLimit) {
+  const result = await read('datastore_search', {
     resource_id: source,
-    fields: 'mispar_rechev,mispar_shilda,mispar_manoa',
-    sort: plates ? '_id asc' : '_id desc',
-    limit: String(sampleLimit),
+    fields:
+      '_id,mispar_rechev,mispar_shilda,mispar_manoa,tozeret_nm,degem_nm,degem_manoa',
+    sort: full || plates ? '_id asc' : '_id desc',
+    offset: String(offset),
+    limit: String(limit),
     include_total: 'false',
     ...(plates && { filters: JSON.stringify({ mispar_rechev: plates }) }),
   });
-  const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
-  if (!response.ok)
-    throw new Error(`Engine source returned HTTP ${response.status}`);
-  const body = await response.json();
-  const records = body.result?.records;
+  const records = result.records;
   if (
-    body.success !== true ||
     !Array.isArray(records) ||
     records.some(
       (row) =>
@@ -51,6 +69,10 @@ async function rows(plates) {
   )
     throw new Error('Engine source returned incomplete or unexpected rows');
   return records.map((row) => ({
+    id: row._id,
+    vehicleMaker: row.tozeret_nm,
+    vehicleModel: row.degem_nm,
+    engineModel: row.degem_manoa,
     plate: String(row.mispar_rechev),
     vin: row.mispar_shilda,
     engine: row.mispar_manoa,
@@ -59,7 +81,42 @@ async function rows(plates) {
 }
 
 let observations;
-if (previousPath) {
+if (full) {
+  if (previousPath)
+    throw new Error('Full capture scans the current frame directly');
+  const revision = async () => {
+    const meta = await read('resource_show', { id: source });
+    if (!meta.last_modified || !Number.isFinite(Date.parse(meta.last_modified)))
+      throw new Error('Engine registry revision unavailable');
+    return meta.last_modified;
+  };
+  const before = await revision();
+  const { total, total_was_estimated } = await read('datastore_search', {
+    resource_id: source,
+    limit: '0',
+    include_total: 'true',
+    total_estimation_threshold: '10000000',
+  });
+  if (!Number.isSafeInteger(total) || total <= 0 || total_was_estimated)
+    throw new Error('Exact engine registry size unavailable');
+  observations = [];
+  let lastId = -1;
+  for (let offset = 0; offset < total; offset += scanLimit) {
+    if (offset) await setTimeout(500);
+    const limit = Math.min(scanLimit, total - offset);
+    const page = await rows(undefined, offset, limit);
+    if (page.length !== limit)
+      throw new Error(`Incomplete engine registry at offset ${offset}`);
+    for (const row of page) {
+      if (!Number.isSafeInteger(row.id) || row.id <= lastId)
+        throw new Error('Engine registry rows are duplicated or unordered');
+      lastId = row.id;
+      observations.push(row);
+    }
+  }
+  if ((await revision()) !== before)
+    throw new Error('Engine registry revision changed during capture');
+} else if (previousPath) {
   const previous = JSON.parse(await readFile(previousPath, 'utf8'));
   if (
     previous.source !== source ||

@@ -1,0 +1,63 @@
+﻿---
+import { count } from '../data/catalog';
+import { registrations } from '../data/registrations';
+import { resources } from '../data/sources';
+
+interface Props {
+  path: string;
+}
+const { path } = Astro.props;
+const rows = registrations.modelMonths[path]?.slice().reverse();
+const date = new Intl.DateTimeFormat('he-IL', {
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+---
+
+{rows && rows.length > 0 && (
+  <section class="panel catalog-data" id="model-registrations">
+    <h2>רישום כלי רכב חדשים לפי חודש</h2>
+    <p>
+      הספירה כוללת רשומות עם קוד דגם ששויך לדגם זה ללא חפיפה בקטלוג. החודש הוא
+      חודש העלייה לכביש לפי מקור הרישום.
+    </p>
+    <details>
+      <summary>הצגת החודשים הזמינים</summary>
+      <div
+        class="table-scroll"
+        role="region"
+        aria-label="רישומים חודשיים לדגם"
+        tabindex="0"
+      >
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">חודש רישום</th>
+              <th scope="col">כלי רכב</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([month, value]) => (
+              <tr>
+                <th scope="row">
+                  {date.format(
+                    Date.UTC(Math.floor(month / 100), (month % 100) - 1),
+                  )}
+                </th>
+                <td>{count.format(value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    <p class="muted">
+      מוצגות רשומות שנמצאו ב־36 חודשי המקור האחרונים.
+      <a href={resources.monthly.url}>מקור הספירות</a> ·
+      <a href={import.meta.env.BASE_URL + 'registrations/'}>
+        ארכיון הרישום הארצי
+      </a>
+    </p>
+  </section>
+)}

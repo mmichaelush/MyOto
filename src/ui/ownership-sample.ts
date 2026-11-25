@@ -11,6 +11,7 @@ const fields = [
   'degem_cd',
   'shnat_yitzur',
   'baalut',
+  'tzeva_rechev',
 ];
 const percent = new Intl.NumberFormat('he-IL', {
   style: 'percent',
@@ -70,9 +71,14 @@ async function sampleOwnership(
       return records;
     }),
   );
-  const ownership = new Map<string, string | null>();
+  const ownership = new Map<string, [string, string] | null>();
   for (const row of pages.flat()) {
-    if (!row || !fields.every((field) => Object.hasOwn(row, field)))
+    if (
+      !row ||
+      !fields.every(
+        (field) => field === 'tzeva_rechev' || Object.hasOwn(row, field),
+      )
+    )
       throw new Error('Incomplete ownership record');
     const key = [
       row.sug_degem,
@@ -82,29 +88,41 @@ async function sampleOwnership(
     ].join('/');
     const plate = String(row.mispar_rechev);
     if (!keys.has(key) || !/^\d{4,8}$/.test(plate)) continue;
-    const label =
-      typeof row.baalut === 'string' && row.baalut.trim()
-        ? row.baalut.trim()
-        : 'בעלות לא צוינה';
+    const owned =
+      (typeof row.baalut === 'string' && row.baalut.trim()) || 'בעלות לא צוינה';
+    const color =
+      (typeof row.tzeva_rechev === 'string' && row.tzeva_rechev.trim()) ||
+      'צבע לא צוין';
     const previous = ownership.get(plate);
     ownership.set(
       plate,
-      previous === undefined || previous === label ? label : null,
+      previous === undefined ||
+        (previous?.[0] === owned && previous?.[1] === color)
+        ? [owned, color]
+        : null,
     );
   }
-  const counts = new Map<string, number>();
-  let size = 0;
-  for (const label of ownership.values())
-    if (label) {
+  const sample = [...ownership.values()].filter((row) => row !== null);
+  const size = sample.length;
+  const distributions = (
+    [
+      ['בעלות', 0],
+      ['צבע', 1],
+    ] as const
+  ).map(([title, column]) => {
+    const counts = new Map<string, number>();
+    for (const row of sample) {
+      const label = row[column];
       counts.set(label, (counts.get(label) ?? 0) + 1);
-      size++;
     }
-  const published = [...counts]
-    .filter(([, n]) => n >= 5)
-    .sort((a, b) => b[1] - a[1]);
-  const other = size - published.reduce((sum, [, n]) => sum + n, 0);
-  if (other) published.push(['סוגים נוספים', other]);
-  return { size, published };
+    const published = [...counts]
+      .filter(([, n]) => n >= 5)
+      .sort((a, b) => b[1] - a[1]);
+    const other = size - published.reduce((sum, [, n]) => sum + n, 0);
+    if (other) published.push(['סוגים נוספים', other]);
+    return { title, published };
+  });
+  return { size, distributions };
 }
 
 for (const form of document.querySelectorAll<HTMLFormElement>(
@@ -144,29 +162,28 @@ for (const form of document.querySelectorAll<HTMLFormElement>(
           'נמצאו פחות מ־20 רשומות תואמות. המדגם קטן מדי להצגת אחוזים.';
         return;
       }
-      status.textContent = `בעלות רשומה בשנתון ${selected} · מדגם של ${data.size} כלי רכב פעילים`;
-      const list = element('ul', undefined, 'distributions');
-      for (const [label, n] of data.published) {
-        const item = element(
-          'li',
-          `${label} · ${percent.format(n / data.size)} (${n})`,
-        );
-        const meter = element('meter');
-        meter.min = 0;
-        meter.max = data.size;
-        meter.value = n;
-        meter.setAttribute('aria-label', `${label} מתוך ${data.size}`);
-        item.append(meter);
-        list.append(item);
+      status.textContent = `שנתון ${selected} · מדגם של ${data.size} כלי רכב פעילים`;
+      const groups = element('div', undefined, 'grid-data');
+      for (const { title, published } of data.distributions) {
+        const group = element('section');
+        const list = element('ul', undefined, 'distributions');
+        for (const [label, n] of published) {
+          const item = element(
+            'li',
+            `${label} · ${percent.format(n / data.size)} (${n})`,
+          );
+          const meter = element('meter');
+          meter.min = 0;
+          meter.max = data.size;
+          meter.value = n;
+          meter.setAttribute('aria-label', `${label} מתוך ${data.size}`);
+          item.append(meter);
+          list.append(item);
+        }
+        group.append(element('h3', title), list);
+        groups.append(group);
       }
-      output.append(
-        list,
-        element(
-          'p',
-          'מדגם שיטתי של כלי רכב פעילים לפי קודי דגם. האחוזים מתארים את המדגם.',
-          'muted',
-        ),
-      );
+      output.append(groups);
     } catch (error) {
       if (!request.signal.aborted) {
         logFailure('sample-model-ownership', error);
@@ -176,4 +193,5 @@ for (const form of document.querySelectorAll<HTMLFormElement>(
       if (!request.signal.aborted) submit.disabled = false;
     }
   });
+  if (form.dataset.autoload === 'true') form.requestSubmit();
 }

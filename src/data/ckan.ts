@@ -117,7 +117,7 @@ export class CkanClient {
       this.cache.delete(key);
       if (cached.until > Date.now()) {
         this.cache.set(key, cached);
-        return cached.result;
+        return { ...cached.result, cached: true };
       }
       this.bytes -= cached.bytes;
     }
@@ -356,7 +356,7 @@ export class CkanClient {
       };
     } catch (error) {
       signal.throwIfAborted();
-      if (timer.aborted) throw new SourceError('timeout');
+      if (timer.aborted) throw new SourceError('timeout', backoff());
       if (error instanceof SourceError) throw error;
       // Fetch exposes browser CORS blocks and network disconnects as the same error.
       throw new SourceError('network', backoff());

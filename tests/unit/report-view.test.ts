@@ -96,12 +96,54 @@ test('shows history by plate separately when a non-private registration cannot v
   expect(
     view.highlights.some((row) => row.id === 'kilometer_test_aharon'),
   ).toBe(false);
-  const history = view.additional.find(
-    (section) => section.id === 'history-by-plate',
+  const history = view.tables.find((table) => table.id === 'odometer-history');
+  expect(history?.note).toContain('לפי מספר רישוי');
+  expect(history?.rows).toEqual([['—', '87,500', '—']]);
+});
+
+test.each([
+  ['2027-02-13', 'רישוי בתוקף'],
+  ['2027-05-09', 'רישוי בתוקף'],
+  ['2025-11-22', 'תוקף הרישוי פג'],
+])(
+  'shows validity from the registry date %s with partial coverage',
+  (date, label) => {
+    const report = buildReport(
+      '11234567',
+      'registration',
+      {
+        publicTransport: reply({ tokef_dt: date }),
+      },
+      true,
+    );
+    expect(
+      vehicleViewModel(report, new Date('2026-11-24T10:00:00Z')).status,
+    ).toBe(label);
+  },
+);
+test('reports ownership periods and excludes a dealer from the hand count', () => {
+  const report = buildReport(
+    '11234567',
+    'registration',
+    {
+      private_cars_1: reply({ tokef_dt: '2027-02-13' }),
+      history_2: reply(
+        { baalut: 'פרטי', baalut_dt: 202401 },
+        { baalut: 'סוחר', baalut_dt: 202304 },
+        { baalut: 'פרטי', baalut_dt: 202201 },
+      ),
+    },
+    true,
   );
-  expect(history?.note).toContain('ללא מזהה משותף');
+  const view = vehicleViewModel(report, new Date('2026-11-24T10:00:00Z'));
+  expect(view.highlights.find(({ id }) => id === 'ownership-count')?.text).toBe(
+    '2',
+  );
   expect(
-    history?.groups.flat().find((row) => row.id === 'kilometer_test_aharon')
-      ?.text,
-  ).toContain('87,500');
+    view.tables.find(({ id }) => id === 'ownership-history')?.rows,
+  ).toEqual([
+    ['ינואר–מרץ 2024', 'פרטי', '—', 'יד 2'],
+    ['אפריל–יוני 2023', 'סוחר', '9 חודשים', ''],
+    ['ינואר–מרץ 2022', 'פרטי', 'שנה ו־3 חודשים', 'יד 1'],
+  ]);
 });

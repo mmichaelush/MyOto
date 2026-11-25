@@ -361,7 +361,7 @@ test('explains a failed recall check when both vehicle registries are empty', as
     page.getByRole('heading', { name: 'לא נמצאה התאמה' }),
   ).toBeVisible();
   await expect(
-    page.getByText('בדיקת הריקול לפי מספר הרישוי לא הושלמה.'),
+    page.getByText('לא נמצאה התאמה ברישוי ובצמ״ה. בדיקת המקורות חלקית.'),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'נסה שוב' })).toBeVisible();
   await expect(page.locator('#vehicle-recall')).toHaveCount(0);
@@ -410,15 +410,21 @@ test('report controls keep their location and section order survives reload', as
   await page.setViewportSize({ width: 390, height: 850 });
   await page.goto(`/MyOto/?search=${registration}`);
   const more = page.locator('.report-more > summary');
-  await expect(more).toHaveText('עוד פעולות');
-  const closed = await more.boundingBox();
+  await expect(more).toHaveText('עוד פעולות', { timeout: 15000 });
+  const closed = await more.evaluate((node) => ({
+    x: node.getBoundingClientRect().x + scrollX,
+    y: node.getBoundingClientRect().y + scrollY,
+  }));
   releaseModel();
   await expect(
     page.getByRole('link', { name: 'לדף דגם ושנתון' }),
   ).toBeVisible();
   await more.click();
   await expect(more).toHaveText('הסתר פעולות');
-  const open = await more.boundingBox();
+  const open = await more.evaluate((node) => ({
+    x: node.getBoundingClientRect().x + scrollX,
+    y: node.getBoundingClientRect().y + scrollY,
+  }));
   expect(open?.x).toBeCloseTo(closed?.x ?? 0, 0);
   expect(open?.y).toBeCloseTo(closed?.y ?? 0, 0);
   await more.click();
@@ -482,7 +488,9 @@ test('legacy local readings are removed and do not trigger mileage warnings', as
     page.locator('.report-metrics').getByText('תוקף הרישיון פג לפני 22 ימים'),
   ).toBeVisible();
   await expect(
-    page.getByText('קריאת נסועה אחרונה', { exact: true }),
+    page
+      .locator('.report-summary')
+      .getByText('קריאת נסועה אחרונה', { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'נמדדה ירידה בקילומטראז׳' }),

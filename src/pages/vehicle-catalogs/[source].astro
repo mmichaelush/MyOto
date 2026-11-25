@@ -1,0 +1,245 @@
+﻿---
+import Site from '../../layouts/Site.astro';
+import { count } from '../../data/catalog';
+import { specialtyCatalog } from '../../data/specialty-catalog';
+import {
+  specialtySources,
+  type SpecialtySource,
+} from '../../domain/specialty-catalog';
+import { resources } from '../../data/sources';
+import '../../styles/catalog.css';
+
+export function getStaticPaths() {
+  return Object.keys(specialtyCatalog).map((source) => ({
+    params: { source },
+  }));
+}
+const source = Astro.params.source as SpecialtySource;
+const snapshot = specialtyCatalog[source];
+const title = specialtySources[source].title;
+const base = import.meta.env.BASE_URL;
+const years = [
+  ...new Set(
+    snapshot.rows.flatMap(([, , , year]) => (year == null ? [] : [year])),
+  ),
+].sort((a, b) => b - a);
+const categories = [
+  ...new Set(snapshot.rows.map(([, , category]) => category).filter(Boolean)),
+].sort((a, b) => a.localeCompare(b, 'he'));
+const common = [...snapshot.rows].sort((a, b) => b[4] - a[4]).slice(0, 60);
+---
+
+<Site title={`קטלוג ${title}`}>
+  <section class="panel catalog-heading">
+    <h1>קטלוג {title}</h1>
+    <nav aria-label="קטלוגי רכב">
+      {(Object.keys(specialtySources) as SpecialtySource[]).map((key) => (
+        <a
+          href={base + 'vehicle-catalogs/' + key + '/'}
+          aria-current={key === source ? 'page' : undefined}
+        >
+          {specialtySources[key].title}
+        </a>
+      ))}
+    </nav>
+    <p>
+      {count.format(snapshot.total)} רשומות במאגר ·{' '}
+      <bdi>{snapshot.updatedAt.slice(0, 10)}</bdi> ·{' '}
+      <a href={resources[source].url}>מקור</a>
+    </p>
+    <form
+      id="specialty-filter"
+      class="catalog-filters"
+      data-source={source}
+      hidden
+    >
+      <label class="control">
+        יצרן או דגם{' '}
+        <input class="text-input" name="query" type="search" maxlength="100" />
+      </label>
+      <label class="control">
+        שנת ייצור{' '}
+        <select name="year">
+          <option value="">כל השנים</option>
+          {years.map((year) => (
+            <option value={year}>{year}</option>
+          ))}
+        </select>
+      </label>
+      {(source === 'heavy' || source === 'publicTransport') && (
+        <label class="control">
+          קבוצה
+          <select name="family">
+            <option value="">כל הקבוצות</option>
+            {source === 'heavy' ? (
+              <option value="trucks">משאיות (N2 / N3)</option>
+            ) : (
+              <option value="buses">אוטובוסים</option>
+            )}
+          </select>
+        </label>
+      )}
+      <label class="control">
+        סיווג במאגר{' '}
+        <select name="category">
+          <option value="">כל הסיווגים</option>
+          {categories.map((category) => (
+            <option value={category}>{category}</option>
+          ))}
+        </select>
+      </label>
+    </form>
+    <p id="specialty-status" role="status"></p>
+  </section>
+  <section class="panel catalog-data">
+    <h2 id="specialty-heading">תוצרים ודגמים בקבוצות הגדולות</h2>
+    <div
+      class="table-scroll"
+      role="region"
+      aria-label="ספירות לפי דגם"
+      tabindex="0"
+    >
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">יצרן ודגם</th>
+            <th scope="col">סיווג במאגר</th>
+            <th scope="col">שנת ייצור</th>
+            <th scope="col">רשומות</th>
+          </tr>
+        </thead>
+        <tbody id="specialty-rows">
+          {common.map(([make, model, category, year, total]) => (
+            <tr>
+              <th scope="row">
+                {[make, model].filter(Boolean).join(' · ') || '—'}
+              </th>
+              <td>{category || '—'}</td>
+              <td>{year ?? '—'}</td>
+              <td>{count.format(total)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</Site>
+
+<script>
+  import { normalizeCatalogTerm } from '../../presentation/catalog-search';
+  import type { SpecialtyRow } from '../../domain/specialty-catalog';
+  import { element } from '../../ui/dom';
+
+  const form = document.querySelector<HTMLFormElement>('#specialty-filter')!;
+  const status = document.querySelector<HTMLElement>('#specialty-status')!;
+  const body =
+    document.querySelector<HTMLTableSectionElement>('#specialty-rows')!;
+  const heading = document.querySelector<HTMLElement>('#specialty-heading')!;
+  const initial = [...body.rows];
+  const formatter = new Intl.NumberFormat('he-IL');
+  let source: Promise<SpecialtyRow[]> | undefined;
+  let current = 0;
+
+  async function filter() {
+    const version = ++current;
+    const options = new FormData(form);
+    const query = normalizeCatalogTerm(String(options.get('query') ?? ''));
+    const year = String(options.get('year') ?? '');
+    const category = options.get('category');
+    const family = options.get('family');
+    if (!query && !year && !category && !family) {
+      body.replaceChildren(...initial);
+      heading.textContent = 'תוצרים ודגמים בקבוצות הגדולות';
+      status.textContent = '';
+      return;
+    }
+    status.textContent = 'טוען נתונים…';
+    source ??= fetch(
+      import.meta.env.BASE_URL +
+        'vehicle-catalogs/' +
+        form.dataset.source +
+        '.json',
+    )
+      .then((response) => {
+        if (!response.ok) throw new Error('Catalog unavailable');
+        return response.json() as Promise<SpecialtyRow[]>;
+      })
+      .catch((error) => {
+        source = undefined;
+        throw error;
+      });
+    try {
+      const rows = await source;
+      if (version !== current) return;
+      const matches = rows
+        .filter(
+          ([make, model, kind, produced]) =>
+            (!query ||
+              normalizeCatalogTerm(make + ' ' + model).includes(query)) &&
+            (!year || String(produced) === year) &&
+            (!category || kind === category) &&
+            (family !== 'buses' || kind.startsWith('אוטובוס')) &&
+            (family !== 'trucks' || kind === 'N2' || kind === 'N3'),
+        )
+        .sort((a, b) => b[4] - a[4]);
+      body.replaceChildren();
+      heading.textContent = 'תוצאות הסינון';
+      for (const [make, model, kind, produced, total] of matches.slice(
+        0,
+        100,
+      )) {
+        const row = body.insertRow();
+        const header = element(
+          'th',
+          [make, model].filter(Boolean).join(' · ') || '—',
+        );
+        header.scope = 'row';
+        row.append(header);
+        for (const value of [
+          kind || '—',
+          String(produced ?? '—'),
+          formatter.format(total),
+        ])
+          row.insertCell().textContent = value;
+      }
+      const total = matches.reduce((sum, row) => sum + row[4], 0);
+      status.textContent = matches.length
+        ? `נמצאו ${formatter.format(total)} רשומות ב־${formatter.format(matches.length)} קבוצות.${matches.length > 100 ? ' מוצגות 100 קבוצות.' : ''}`
+        : 'לא נמצאו רשומות מתאימות.';
+    } catch {
+      if (current === version)
+        status.textContent =
+          'טעינת הקטלוג נכשלה. אפשר לשנות את החיפוש ולנסות שוב.';
+    }
+  }
+  const params = new URLSearchParams(location.search);
+  for (const key of ['query', 'year', 'category', 'family']) {
+    const control = form.elements.namedItem(key) as
+      HTMLInputElement | HTMLSelectElement;
+    if (!control) continue;
+    const value = (params.get(key) ?? '').slice(0, 100);
+    if (
+      control instanceof HTMLInputElement ||
+      [...control.options].some((item) => item.value === value)
+    )
+      control.value = value;
+  }
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void filter();
+  });
+  form.addEventListener('input', () => void filter());
+  form.hidden = false;
+  void filter();
+</script>
+
+<style>
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem 1rem;
+  }
+  nav [aria-current='page'] {
+    font-weight: 700;
+  }
+</style>

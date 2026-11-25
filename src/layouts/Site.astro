@@ -6,8 +6,13 @@ const {
   description = 'מידע על כלי רכב בישראל ממקורות ממשלתיים',
   privatePage = false,
   embedded = false,
+  canonicalPath,
 } = Astro.props;
 const base = import.meta.env.BASE_URL;
+const canonical =
+  !privatePage && Astro.site
+    ? new URL(canonicalPath ?? Astro.url.pathname, Astro.site).href
+    : undefined;
 ---
 
 <!doctype html>
@@ -25,6 +30,16 @@ const base = import.meta.env.BASE_URL;
       type="image/png"
       sizes="32x32"
     />
+    {canonical && (
+      <>
+        <link rel="canonical" href={canonical} />
+        <meta property="og:url" content={canonical} />
+        <meta property="og:title" content={title + ' | MyOto'} />
+        <meta property="og:description" content={description} />
+        <meta property="og:locale" content="he_IL" />
+        <meta property="og:type" content="website" />
+      </>
+    )}
     <title>{title} | MyOto</title>
   </head>
   <body>
@@ -94,6 +109,13 @@ const base = import.meta.env.BASE_URL;
             <a href={base}>בדיקת רכב</a>
             <a href={base + 'models/'}>יצרנים ודגמים</a>
             <a href={base + 'compare/'}>השוואת רכבים</a>
+            <a href={base + 'licensing-fees/'}>מחשבון אגרת רישוי</a>
+            <a id="footer-vehicle-cost" href={base + 'vehicle-cost/'}>
+              מחשבון עלות שנתית
+            </a>
+            <a id="footer-tire-size" href={base + 'tire-size/'}>
+              מחשבון מידות צמיגים
+            </a>
             <a href={base + 'privacy/'}>פרטיות ומקורות</a>
             <a href="https://github.com/mmichaelush/MyOto">קוד המקור</a>
           </nav>

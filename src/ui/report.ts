@@ -1,4 +1,4 @@
-import { resources, type SourceId } from '../data/sources';
+import { resources, vin, type SourceId } from '../data/sources';
 import type { Report, SourceReplies } from '../domain/report';
 import {
   sourceDate,
@@ -8,9 +8,12 @@ import {
   type DataSection,
   type DataTable,
 } from '../presentation/vehicle-view-model';
+import { vehicleTimeline } from '../domain/vehicle-timeline';
 import { element, link } from './dom';
 import { icon, mark } from './icons';
 import { renderRecall } from './recall-panel';
+import { renderBuyerChecks } from './buyer-checks';
+import { localHistoryControl } from './local-history';
 import { arrangeReport } from './report-layout';
 
 export { statusLabels, vehicleName } from '../presentation/vehicle-view-model';
@@ -22,8 +25,6 @@ function dataRow(data: DataRow, highlight = false) {
   if (data.icon) mark(label, data.icon);
   const value = element('dd');
   value.append(element('bdi', data.text));
-  if (data.scope === 'model')
-    value.append(element('small', 'לפי מפרט הדגם', 'muted data-scope'));
   if (data.warning)
     value.append(element('small', data.warning, 'field-warning'));
   if (data.help || data.differences?.length) {
@@ -81,7 +82,15 @@ export function dataTable(data: DataTable) {
   const body = table.createTBody();
   for (const values of data.rows) {
     const row = body.insertRow();
-    values.forEach((value) => row.insertCell().append(element('bdi', value)));
+    values.forEach((value, index) => {
+      const cell = row.insertCell();
+      cell.append(
+        element(
+          data.id === 'ownership-history' && index === 3 ? 'strong' : 'bdi',
+          value,
+        ),
+      );
+    });
   }
   scroll.append(table);
   section.append(scroll);
@@ -179,7 +188,7 @@ export function renderReport(report: Report, checked?: SourceReplies) {
   if (view.subtitle) title.append(element('p', view.subtitle, 'muted'));
   if (view.status)
     title.append(
-      element('p', view.status, `vehicle-status status-${report.status}`),
+      element('p', view.status, `vehicle-status status-${view.statusStyle}`),
     );
   if (recall) {
     const reminder = mark(
@@ -228,6 +237,15 @@ export function renderReport(report: Report, checked?: SourceReplies) {
     article.append(alerts);
   }
   const sources = sourceDetails(report, checked);
+  const registryRow = report.sources.private_cars_1?.rows[0];
+  const chassis = registryRow && vin(registryRow);
+  if (
+    report.identity === 'private_cars_1' &&
+    chassis &&
+    !report.separated.includes('private_cars_1') &&
+    !report.unverified.includes('private_cars_1')
+  )
+    sources.append(localHistoryControl(report.plate, chassis));
   const details = element('div', undefined, 'report-sections');
   details.id = 'vehicle-details';
   details.append(
@@ -251,6 +269,39 @@ export function renderReport(report: Report, checked?: SourceReplies) {
   if (recall) article.append(recall);
   if (details.children.length) article.append(details);
   if (details.children.length > 1) nav.append(arrangeReport(details));
+  const chronology = vehicleTimeline(report);
+  if (chronology.length > 1) {
+    const timeline = element('details', undefined, 'advanced');
+    timeline.id = 'vehicle-timeline';
+    timeline.append(
+      mark(element('summary', 'ציר זמן'), 'calendar-days'),
+      dataTable({
+        id: 'timeline-events',
+        title: 'אירועים מתועדים',
+        icon: 'calendar-days',
+        labels: ['מועד', 'אירוע או סוג בעלות', 'מקור'],
+        rows: chronology,
+        note: 'כאשר המקור מוסר רבעון, מוצג טווח החודשים. סדר הרשומות החולקות תקופה אינו קובע את סדר האירועים בפועל.',
+      }),
+    );
+    article.append(timeline);
+  }
+  const buyer = renderBuyerChecks(report);
+  if (buyer) article.append(buyer);
+  if (
+    view.sections.some((section) =>
+      section.groups.some((group) =>
+        group.some((row) => row.scope === 'model'),
+      ),
+    )
+  )
+    article.append(
+      element(
+        'p',
+        'שדות חסרים במרשם הושלמו ממפרט הדגם הזמין.',
+        'muted section-note',
+      ),
+    );
   article.append(sources);
   return article;
 }

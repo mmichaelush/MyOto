@@ -68,3 +68,53 @@ test('combined facets require a jointly observed trim and ownership', () => {
   expect(rankCatalog([model], '', '', 2016, privateGli)).toEqual([model]);
   expect(catalogResultYear(model, privateGli)).toBe(2016);
 });
+test('requires fuel and drivetrain filters to match the same specification', () => {
+  const model: CatalogSearchItem = {
+    path: 'example/car',
+    make: 'Example',
+    name: 'Car',
+    aliases: [],
+    search: 'example car',
+    years: [2020, 2021],
+    active: 20,
+  };
+  const powertrainIndex = {
+    [model.path]: [
+      [['base', 'בנזין', 'הנעה רגילה', '4x4', 'אוטומטית'], [2020]],
+      [['sport', 'חשמל', 'רכב חשמלי', '4x2', 'אוטומטית'], [2020]],
+      [['sport', 'חשמל', 'רכב חשמלי', '4x4', 'אוטומטית'], [2021]],
+    ] satisfies [string[], number[]][],
+  };
+  const filters = { powertrain: ['חשמל', '', '4X4', ''], powertrainIndex };
+  expect(rankCatalog([model], '', '', 2020, filters)).toEqual([]);
+  expect(rankCatalog([model], '', '', 2021, filters)).toEqual([model]);
+  expect(catalogResultYear(model, filters)).toBe(2021);
+});
+test('combines country, fee group and safety only when the same variant qualifies', () => {
+  const model: CatalogSearchItem = {
+    path: 'example/car',
+    make: 'Example',
+    name: 'Car',
+    aliases: [],
+    search: 'example car',
+    years: [2025],
+    active: 20,
+  };
+  const powertrainIndex = {
+    [model.path]: [
+      [['base', '', '', '', '', 'יפן', '3', '0'], [2025]],
+      [['sport', '', '', '', '', 'גרמניה', '5', '8'], [2025]],
+    ] satisfies [string[], number[]][],
+  };
+  const filters = {
+    powertrain: ['', '', '', '', 'יפן', '3', '0'],
+    powertrainIndex,
+  };
+  expect(rankCatalog([model], '', '', 2025, filters)).toEqual([model]);
+  expect(
+    rankCatalog([model], '', '', 2025, {
+      ...filters,
+      powertrain: ['', '', '', '', 'יפן', '5', '8'],
+    }),
+  ).toEqual([]);
+});

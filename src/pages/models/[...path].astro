@@ -5,8 +5,11 @@ import Cohort from '../../components/Cohort.astro';
 import MakeModels from '../../components/MakeModels.astro';
 import ManufacturerPhoto from '../../components/ManufacturerPhoto.astro';
 import ModelStatistics from '../../components/ModelStatistics.astro';
+import ModelRegistrations from '../../components/ModelRegistrations.astro';
 import ModelOwnership from '../../components/ModelOwnership.astro';
 import '../../styles/catalog.css';
+import { engineCodesForKeys } from '../../data/engine-catalog';
+import { activeShare } from '../../domain/fleet';
 import {
   catalog,
   count,
@@ -41,7 +44,19 @@ const modelUrl = model ? makeUrl + model.id + '/' : '';
 const all = model?.records ?? make.models.flatMap((entry) => entry.records);
 const rows = year ? all.filter((row) => row.year === year) : all;
 const sum = totals(rows);
+const engineCodes = model ? engineCodesForKeys(rows.map(({ id }) => id)) : [];
 const title = [make.name, model?.name, year].filter(Boolean).join(' ');
+const percentage = new Intl.NumberFormat('he-IL', {
+  style: 'percent',
+  maximumFractionDigits: 1,
+});
+const presentShare = (row: typeof sum) => {
+  const fraction = activeShare(row);
+  return fraction === undefined ? '—' : percentage.format(fraction);
+};
+const fleetFilters = new URLSearchParams({ make: make.id });
+if (year) fleetFilters.set('year', String(year));
+const fleetUrl = import.meta.env.BASE_URL + 'fleet/?' + fleetFilters;
 const yearRows = totalsByYear(all);
 const peak = Math.max(1, ...yearRows.map((row) => row.active));
 const position = yearRows.findIndex((row) => row.year === year);
@@ -125,6 +140,10 @@ const specDetails = (spec: ModelSpecifications) =>
         </div>
       )}
     </dl>
+    <p class="muted">
+      שיעור פעילים בספירות המקור <bdi>{presentShare(sum)}</bdi>.{' '}
+      <a href={fleetUrl}>לנתוני היצרן באזור הסטטיסטיקה</a>
+    </p>
     {!model && <ManufacturerPhoto make={make.id} />}
     {year && (fuels.length > 0 || displacements.length > 0) && (
       <dl class="catalog-variant-summary">
@@ -144,6 +163,36 @@ const specDetails = (spec: ModelSpecifications) =>
         )}
       </dl>
     )}
+    {model && (
+      <a
+        href={
+          import.meta.env.BASE_URL +
+          'compare-models/?a=' +
+          encodeURIComponent(
+            [make.id, model.id, year].filter(Boolean).join('/'),
+          )
+        }
+      >
+        השוואה לדגם נוסף
+      </a>
+    )}
+    {model && (
+      <a
+        href={
+          import.meta.env.BASE_URL +
+          'recalls/?' +
+          new URLSearchParams({
+            ...(!make.id.startsWith('id-') && {
+              make: make.id.replaceAll('-', ' '),
+            }),
+            model: model.name,
+            ...(year && { year: String(year) }),
+          })
+        }
+      >
+        קריאות שירות לפי דגם
+      </a>
+    )}
     {year && (
       <nav class="catalog-year-links" aria-label="שנתונים של הדגם">
         {newer && <a href={modelUrl + newer + '/'}>שנתון {newer}</a>}
@@ -152,11 +201,31 @@ const specDetails = (spec: ModelSpecifications) =>
       </nav>
     )}
   </section>
+  {model && year && <Cohort id={`${make.id}/${model.id}/${year}`} />}
+  {model && <ModelOwnership {model} path={`${make.id}/${model.id}`} {year} />}
   {!model && <MakeModels {make} {makeUrl} />}
+  {engineCodes.length > 0 && (
+    <section class="panel catalog-data">
+      <h2>קודי מנוע שנצפו</h2>
+      <ul>
+        {engineCodes.map(({ code, id }) => (
+          <li>
+            <a href={import.meta.env.BASE_URL + 'engines/' + id + '/'}>
+              <bdi>{code}</bdi>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )}
   {model && <ModelStatistics {rows} total={sum.active} />}
   {!year && (
     <section class="panel catalog-data">
       <h2>כלי רכב לפי שנת ייצור</h2>
+      <p class="muted">
+        השיעור מחושב מתוך הספירות הזמינות לכל שנתון. הכיסוי עשוי להיות חלקי
+        בדגמים ותיקים.
+      </p>
       <div
         class="table-scroll"
         role="region"
@@ -169,6 +238,7 @@ const specDetails = (spec: ModelSpecifications) =>
               <th scope="col">שנת ייצור</th>
               <th scope="col">פעילים</th>
               <th scope="col">לא פעילים</th>
+              <th scope="col">שיעור פעילים</th>
             </tr>
           </thead>
           <tbody>
@@ -191,6 +261,7 @@ const specDetails = (spec: ModelSpecifications) =>
                   ></meter>
                 </td>
                 <td>{count.format(row.inactive)}</td>
+                <td>{presentShare(row)}</td>
               </tr>
             ))}
           </tbody>
@@ -290,8 +361,6 @@ const specDetails = (spec: ModelSpecifications) =>
       </div>
     </section>
   )}
-  {model && year && <Cohort id={`${make.id}/${model.id}/${year}`} />}
-  {model && <ModelOwnership {model} path={`${make.id}/${model.id}`} {year} />}
   {model && !year && make.models.length > 1 && (
     <section class="panel catalog-directory">
       <h2>דגמים נוספים של {make.name}</h2>
@@ -308,5 +377,6 @@ const specDetails = (spec: ModelSpecifications) =>
       <a href={makeUrl}>כל דגמי {make.name}</a>
     </section>
   )}
+  {model && !year && <ModelRegistrations path={make.id + '/' + model.id} />}
   <CatalogSource />
 </Site>

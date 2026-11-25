@@ -1,0 +1,122 @@
+﻿---
+import Site from '../../layouts/Site.astro';
+import { count } from '../../data/catalog';
+import {
+  electricDistricts,
+  electricFleet,
+  electricFleetTotal,
+} from '../../data/electric-fleet';
+import { resources } from '../../data/sources';
+import '../../styles/catalog.css';
+
+const percent = new Intl.NumberFormat('he-IL', {
+  style: 'percent',
+  maximumFractionDigits: 1,
+});
+---
+
+<Site
+  title="כלי רכב חשמליים פעילים לפי מחוז ונפה"
+  description="ספירת כלי הרכב החשמליים הפעילים לפי מחוז, נפה וסוג בעלות ממשרד התחבורה."
+>
+  <section class="panel catalog-heading">
+    <h1>כלי רכב חשמליים פעילים</h1>
+    <p>
+      <bdi>{count.format(electricFleetTotal)}</bdi> כלי רכב בספירות המקור.
+      הפירוט כולל מחוז, נפה וסוג בעלות.
+    </p>
+    <p class="muted">
+      המקור עודכן ב־<bdi>{electricFleet.updatedAt.slice(0, 10)}</bdi>.{' '}
+      <a href={resources.electric.url}>מאגר משרד התחבורה</a>
+    </p>
+    <a href={import.meta.env.BASE_URL + 'electric/counts.csv'} download>
+      הורדת הנתונים כ־CSV
+    </a>
+    <p>
+      <a
+        href={
+          import.meta.env.BASE_URL +
+          'models/?' +
+          new URLSearchParams({ propulsion: 'רכב חשמלי' })
+        }
+      >
+        דגמים חשמליים בקטלוג
+      </a>{' '}
+      ·
+      <a
+        href={
+          import.meta.env.BASE_URL +
+          'models/?' +
+          new URLSearchParams({ propulsion: 'היברידי רגיל' })
+        }
+      >
+        דגמים היברידיים
+      </a>{' '}
+      ·
+      <a
+        href={
+          import.meta.env.BASE_URL +
+          'models/?' +
+          new URLSearchParams({ propulsion: 'PLUG IN' })
+        }
+      >
+        דגמי פלאג־אין
+      </a>
+    </p>
+  </section>
+  <section class="panel catalog-data">
+    <h2>חלוקה לפי מחוז</h2>
+    <p>פתחו מחוז כדי לראות את ספירת הנפות וסוגי הבעלות שנכללו בו.</p>
+    {electricDistricts.map(({ district, rows, total }) => (
+      <details>
+        <summary>
+          <strong>{district || 'מחוז לא זמין'}</strong>
+          <bdi>
+            {count.format(total)} · {percent.format(total / electricFleetTotal)}
+          </bdi>
+        </summary>
+        <div
+          class="table-scroll"
+          role="region"
+          aria-label={district || 'מחוז לא זמין'}
+          tabindex="0"
+        >
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">נפה</th>
+                <th scope="col">סוג בעלות</th>
+                <th scope="col">ספירה</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(([, subdistrict, ownership, value]) => (
+                <tr>
+                  <td>{subdistrict || 'לא זמין'}</td>
+                  <td>{ownership || 'לא זמין'}</td>
+                  <td>{count.format(value)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    ))}
+  </section>
+</Site>
+<style>
+  details {
+    border-block-end: 1px solid var(--line);
+  }
+  summary {
+    cursor: pointer;
+    padding: 0.75rem 0;
+  }
+  summary bdi {
+    display: inline-block;
+    margin-inline-start: 0.5rem;
+  }
+  .table-scroll {
+    margin-block-end: 0.75rem;
+  }
+</style>

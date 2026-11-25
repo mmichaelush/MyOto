@@ -88,3 +88,24 @@ test('classifies browser network and CORS failures and respects the HTTP budget'
   ).toBe('budget');
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
+test('retries an upstream timeout before returning the result', async () => {
+  const fetcher = vi
+    .fn<typeof fetch>()
+    .mockImplementationOnce(
+      (_, options) =>
+        new Promise((_, reject) => {
+          const signal = options?.signal;
+          signal?.addEventListener('abort', () => reject(signal.reason), {
+            once: true,
+          });
+        }),
+    )
+    .mockResolvedValueOnce(ok());
+  const result = await new CkanClient(fetcher, 1, 25, () => 0).lookup(
+    resource,
+    filter,
+    new AbortController().signal,
+  );
+  expect(result).toMatchObject({ rows: [filter] });
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});

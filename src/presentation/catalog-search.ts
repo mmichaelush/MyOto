@@ -17,7 +17,13 @@ export type CatalogFacetIndex = Record<
   }
 >;
 
+export type PowertrainIndex = Record<
+  string,
+  [labels: string[], years: number[]][]
+>;
 type CatalogFilters = {
+  powertrain?: string[];
+  powertrainIndex?: PowertrainIndex;
   trim?: string;
   ownership?: string;
   index?: CatalogFacetIndex;
@@ -31,7 +37,7 @@ export const normalizeCatalogTerm = (value: string) =>
     .trim()
     .replace(/\s+/g, ' ');
 
-function filterYears(path: string, filters: CatalogFilters) {
+function ownershipYears(path: string, filters: CatalogFilters) {
   const { trim, ownership } = filters;
   const data = filters.index?.[path];
   if (trim && ownership)
@@ -45,6 +51,22 @@ function filterYears(path: string, filters: CatalogFilters) {
     return data?.ownership?.find(([label]) => label === ownership)?.[1] ?? [];
 }
 
+function filterYears(path: string, filters: CatalogFilters) {
+  const ownership = ownershipYears(path, filters);
+  if (!filters.powertrain?.some(Boolean)) return ownership;
+  const required = [filters.trim ?? '', ...filters.powertrain];
+  const matches = new Set(
+    (filters.powertrainIndex?.[path] ?? []).flatMap(([labels, years]) =>
+      required.every((value, index) => !value || labels[index] === value)
+        ? years
+        : [],
+    ),
+  );
+  return ownership
+    ? ownership.filter((year) => matches.has(year))
+    : [...matches];
+}
+
 export function catalogResultYear(
   entry: CatalogSearchItem,
   filters: CatalogFilters,
@@ -53,7 +75,15 @@ export function catalogResultYear(
   return matchingYears?.length === 1 ? matchingYears[0] : undefined;
 }
 
-const normalizeFilters = ({ trim, ownership, index }: CatalogFilters) => ({
+const normalizeFilters = ({
+  trim,
+  ownership,
+  index,
+  powertrain,
+  powertrainIndex,
+}: CatalogFilters) => ({
+  powertrain: powertrain?.map(normalizeCatalogTerm),
+  powertrainIndex,
   trim: normalizeCatalogTerm(trim ?? ''),
   ownership: normalizeCatalogTerm(ownership ?? ''),
   index,

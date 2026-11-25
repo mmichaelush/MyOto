@@ -1,0 +1,170 @@
+---
+import Site from '../../layouts/Site.astro';
+import CatalogSource from '../../components/CatalogSource.astro';
+import { catalog, count } from '../../data/catalog';
+import { activeShare, fleetCells, groupFleet } from '../../domain/fleet';
+import '../../styles/catalog.css';
+
+const base = import.meta.env.BASE_URL;
+const cells = fleetCells(catalog.makes);
+const yearOptions = [...new Set(cells.map(([, year]) => year))].sort(
+  (a, b) => b - a,
+);
+const rows = groupFleet(cells, {
+  make: '',
+  year: '',
+  type: '',
+  group: 'year',
+}).sort((a, b) => Number(b.key) - Number(a.key));
+const share = new Intl.NumberFormat('he-IL', {
+  style: 'percent',
+  maximumFractionDigits: 1,
+});
+---
+
+<Site
+  title="סטטיסטיקת כלי רכב לפי יצרן ושנתון"
+  description="ספירות כלי רכב פעילים ולא פעילים לפי יצרן, שנת ייצור וסוג דגם בקטלוג משרד התחבורה."
+>
+  <section class="panel catalog-heading">
+    <h1>סטטיסטיקת כלי רכב</h1>
+    <p>
+      כלי רכב פרטיים ומסחריים לפי יצרן ושנת ייצור, בתמונת המצב של קטלוג משרד
+      התחבורה.
+    </p>
+    <p>
+      <a href={base + 'vehicle-catalogs/twoWheeled/'}>
+        קטלוגי דו־גלגלי, רכב ציבורי, יבוא אישי וצמ״ה
+      </a>
+      · <a href={base + 'vehicle-catalogs/heavy/?family=trucks'}>משאיות</a> ·{' '}
+      <a href={base + 'vehicle-catalogs/publicTransport/?family=buses'}>
+        אוטובוסים
+      </a>
+    </p>
+    <form id="fleet-filters" class="catalog-filters" data-base={base} hidden>
+      <label class="control">
+        יצרן
+        <select name="make">
+          <option value="">כל היצרנים</option>
+          {catalog.makes.map(({ id, name }) => (
+            <option value={id}>{name}</option>
+          ))}
+        </select>
+      </label>
+      <label class="control">
+        שנת ייצור
+        <select name="year">
+          <option value="">כל השנים</option>
+          {yearOptions.map((year) => (
+            <option value={year}>{year}</option>
+          ))}
+        </select>
+      </label>
+      <label class="control">
+        סוג דגם
+        <select name="type">
+          <option value="">כל הסוגים</option>
+          <option value="P">פרטי</option>
+          <option value="M">מסחרי</option>
+        </select>
+      </label>
+      <label class="control">
+        קיבוץ לפי
+        <select name="group">
+          <option value="year">שנת ייצור</option>
+          <option value="make">יצרן</option>
+        </select>
+      </label>
+      <label class="control">
+        מיון
+        <select name="sort">
+          <option value="label">שנת ייצור או שם יצרן</option>
+          <option value="active">כמות פעילים</option>
+          <option value="inactive">כמות לא פעילים</option>
+        </select>
+      </label>
+      <button type="submit">הצגת נתונים</button>
+    </form>
+    <p>
+      <a href={base + 'registrations/'}>כלי רכב חדשים שעלו לכביש לפי חודש</a>
+    </p>
+    <p>
+      <a href={base + 'electric/'}>כלי רכב חשמליים לפי מחוז ונפה</a>
+    </p>
+    <CatalogSource />
+  </section>
+  <section class="panel catalog-data">
+    <h2>פעילים ולא פעילים</h2>
+    <p>
+      שיעור הפעילים מחושב מתוך סכום הפעילים והלא פעילים שנכללו במקור. המקור אינו
+      מפריד כאן בין הקפאה לביטול, והכיסוי של כלי רכב ישנים עשוי להיות חלקי.
+    </p>
+    <p id="fleet-range" role="status"></p>
+    <a id="fleet-export" download="myoto-fleet.csv" hidden>
+      הורדת הטבלה כ־CSV
+    </a>
+    <div
+      class="table-scroll"
+      role="region"
+      aria-label="ספירות לפי הפילוח שנבחר"
+      tabindex="0"
+    >
+      <table>
+        <thead>
+          <tr>
+            <th scope="col" id="fleet-dimension">
+              שנת ייצור
+            </th>
+            <th scope="col">פעילים</th>
+            <th scope="col">לא פעילים</th>
+            <th scope="col">שיעור פעילים במקור</th>
+          </tr>
+        </thead>
+        <tbody id="fleet-rows">
+          {rows.map((row) => {
+            const fraction = activeShare(row);
+            return (
+              <tr>
+                <th scope="row">
+                  <a href={base + 'models/?q=' + row.key}>{row.key}</a>
+                </th>
+                <td>{count.format(row.active)}</td>
+                <td>{count.format(row.inactive)}</td>
+                <td>{fraction === undefined ? '—' : share.format(fraction)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</Site>
+
+<script>
+  import { initFleet } from '../../ui/fleet';
+  initFleet();
+</script>
+
+<style>
+  form[hidden],
+  a[hidden] {
+    display: none;
+  }
+  form button {
+    align-self: end;
+  }
+  #fleet-export {
+    display: inline-block;
+    margin-block-end: 0.6rem;
+  }
+  #fleet-export[hidden] {
+    display: none;
+  }
+  .table-scroll {
+    margin-block-start: 0.75rem;
+  }
+  td,
+  th {
+    white-space: nowrap;
+  }
+</style>

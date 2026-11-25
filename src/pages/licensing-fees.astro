@@ -1,0 +1,220 @@
+---
+import Site from '../layouts/Site.astro';
+import {
+  feeSchedule,
+  feeSchedules,
+  feeVehicleBands,
+} from '../domain/licensing-fees';
+---
+
+<Site title="מחשבון אגרת רישוי">
+  <section class="panel">
+    <h1>מחשבון אגרת רישוי שנתית</h1>
+    <p>בחרו את תקופת התעריף והזינו את הפרטים הרשומים ברישיון הרכב.</p>
+    <p id="fee-prefill" hidden>
+      פרטים מסוימים מולאו מדוח הרכב. יש לוודא אותם מול רישיון הרכב.
+    </p>
+    <form id="fee-form" hidden>
+      <label for="fee-period">תקופת התעריף</label>
+      <select id="fee-period" name="period" class="text-input">
+        <option value="2026">מ־1 באפריל 2026</option>
+        <option value="2025">1 באפריל 2025 עד 31 במרץ 2026</option>
+      </select>
+      <label for="fee-kind">סוג רכב</label>
+      <select id="fee-kind" name="kind" class="text-input">
+        <option value="light">פרטי או מסחרי עד 3,500 ק״ג</option>
+        {Object.entries(feeVehicleBands).map(([key, { name }]) => (
+          <option value={key}>{name}</option>
+        ))}
+        <option value="collector">רכב הרשום כרכב אספנות</option>
+      </select>
+      <fieldset data-kind="light">
+        <legend>פרטים מרישיון הרכב</legend>
+        <label for="fee-group">קבוצת אגרה</label>
+        <select id="fee-group" name="group" class="text-input" required>
+          <option value="">בחירת קבוצה</option>
+          {feeSchedule.light.map((_, index) => (
+            <option value={index + 1}>{index + 1}</option>
+          ))}
+        </select>
+        <label for="fee-year">שנת עלייה לכביש</label>
+        <input
+          id="fee-year"
+          name="year"
+          class="text-input"
+          type="number"
+          min="2000"
+          max="2026"
+          required
+        />
+      </fieldset>
+      {Object.entries(feeVehicleBands).map(
+        ([key, { name, field, options }]) => (
+          <fieldset data-kind={key} hidden disabled>
+            <legend>{name}</legend>
+            <label for={'fee-' + key}>{field}</label>
+            <select id={'fee-' + key} name={key} class="text-input" required>
+              <option value="">בחירה לפי רישיון הרכב</option>
+              {options.map((option, index) => (
+                <option value={index}>{option}</option>
+              ))}
+            </select>
+          </fieldset>
+        ),
+      )}
+      <button type="submit">חישוב אגרה</button>
+      <output id="fee-result" role="status"></output>
+    </form>
+    <noscript>
+      <p>
+        לחישוב בדפדפן נדרש JavaScript. טבלת התעריפים הרשמית זמינה בקישור שלהלן.
+      </p>
+    </noscript>
+    <p>
+      החישוב לפי תעריף בסיס לשנה מלאה. דרישת התשלום האישית עשויה לכלול תוספות,
+      הנחות או פטורים. התשלום למכון הרישוי נפרד.
+    </p>
+    <ul>
+      <li>
+        <a href={import.meta.env.BASE_URL + 'vehicle-cost/'}>
+          מחשבון עלות רכב שנתית
+        </a>
+      </li>
+      <li>
+        <a href={feeSchedule.source}>לוח האגרות מאפריל 2026</a>
+      </li>
+      <li>
+        <a href={feeSchedules['2025'].source}>לוח האגרות מאפריל 2025</a>
+      </li>
+      <li>
+        <a href="https://www.gov.il/he/service/car_licence_renewal">
+          חידוש רישיון רכב ותשלום רשמי
+        </a>
+      </li>
+    </ul>
+  </section>
+  {[feeSchedules['2026'], feeSchedules['2025']].map((schedule) => (
+    <section
+      class="panel"
+      data-fee-period={schedule.year}
+      hidden={schedule.year !== feeSchedule.year}
+    >
+      <h2>אגרת העברת בעלות מאפריל {schedule.year}</h2>
+      <dl>
+        <dt>אופנוע</dt>
+        <dd>{schedule.transfer.motorcycle} ₪</dd>
+        <dt>רכב מנועי אחר</dt>
+        <dd>{schedule.transfer.motorVehicle} ₪</dd>
+        <dt>רישום על שם בעל רישיון סחר</dt>
+        <dd>{schedule.transfer.dealer} ₪</dd>
+        <dt>רכב לא מנועי</dt>
+        <dd>{schedule.transfer.nonMotor} ₪</dd>
+      </dl>
+    </section>
+  ))}
+</Site>
+
+<script>
+  import {
+    annualBaseFee,
+    feeSchedule,
+    feeSchedules,
+    hasFeeBands,
+  } from '../domain/licensing-fees';
+
+  const form = document.querySelector<HTMLFormElement>('#fee-form')!;
+  const period = document.querySelector<HTMLSelectElement>('#fee-period')!;
+  const transferSections =
+    document.querySelectorAll<HTMLElement>('[data-fee-period]');
+  const yearInput = document.querySelector<HTMLInputElement>('#fee-year')!;
+  const selectedSchedule = () =>
+    period.value === '2025' ? feeSchedules['2025'] : feeSchedule;
+  const kind = document.querySelector<HTMLSelectElement>('#fee-kind')!;
+  const result = document.querySelector<HTMLOutputElement>('#fee-result')!;
+  const fields = form.querySelectorAll<HTMLFieldSetElement>(
+    'fieldset[data-kind]',
+  );
+  const money = new Intl.NumberFormat('he-IL', {
+    style: 'currency',
+    currency: 'ILS',
+    maximumFractionDigits: 0,
+  });
+  const updateFields = () => {
+    const schedule = selectedSchedule();
+    yearInput.max = String(schedule.year);
+    for (const section of transferSections)
+      section.hidden = section.dataset.feePeriod !== String(schedule.year);
+    for (const field of fields) {
+      field.hidden = field.disabled = field.dataset.kind !== kind.value;
+    }
+    result.value = '';
+  };
+  form.addEventListener('input', updateFields);
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const category = kind.value;
+    const schedule = selectedSchedule();
+    const amount =
+      category === 'light'
+        ? annualBaseFee(
+            {
+              kind: category,
+              group: Number(data.get('group')),
+              year: Number(data.get('year')),
+            },
+            schedule,
+          )
+        : hasFeeBands(category)
+          ? annualBaseFee(
+              { kind: category, band: Number(data.get(category)) },
+              schedule,
+            )
+          : annualBaseFee({ kind: 'collector' }, schedule);
+    if (amount === undefined) {
+      result.value = 'לא נמצא תעריף מתאים לפרטים שהוזנו.';
+      return;
+    }
+    result.value = `אגרת בסיס לשנה ${money.format(amount)}.`;
+    if (category === 'light') {
+      const total = amount + schedule.broadcasting;
+      result.value += ` בתוספת ${money.format(schedule.broadcasting)} לתאגיד השידור, הסכום המשוער הוא ${money.format(total)}.`;
+    }
+  });
+  const parameters = new URLSearchParams(location.search);
+  const group = parameters.get('group') ?? '';
+  const year = parameters.get('year') ?? '';
+  const groupInput = document.querySelector<HTMLSelectElement>('#fee-group')!;
+  if (/^[1-7]$/.test(group)) groupInput.value = group;
+  if (/^20\d{2}$/.test(year) && Number(year) <= Number(yearInput.max))
+    yearInput.value = year;
+  document.querySelector<HTMLElement>('#fee-prefill')!.hidden =
+    !groupInput.value && !yearInput.value;
+  updateFields();
+  form.hidden = false;
+</script>
+
+<style>
+  form:not([hidden]),
+  fieldset:not([hidden]) {
+    display: grid;
+    gap: 0.65rem;
+  }
+  form {
+    max-inline-size: 34rem;
+  }
+  fieldset {
+    min-inline-size: 0;
+  }
+  select,
+  input {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+  button {
+    justify-self: start;
+  }
+  output {
+    font-weight: 650;
+  }
+</style>

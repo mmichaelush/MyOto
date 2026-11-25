@@ -30,3 +30,5 @@ npm run preview -- --host 127.0.0.1 --port 4322
 בדיקת המקורות החיה נפרדת מהבדיקות האוטומטיות המקומיות. מריצים `node --use-system-ca scripts/check-sources.mjs` כדי לאמת סכמה, מסננים מדויקים ועימוד ארכיון מול הספק. [כיסוי מקורות וחוזה הייצוא](docs/source-coverage.md)
 
 [ארכיטקטורה](docs/architecture.md) · [סקירת שבעת ה־PRs](docs/review-round-2.md) · [אימות ו־QA](docs/validation.md) · [סקירת UI וצילומי מסך](docs/ui-restoration.md) · [שחרור וחזרה לגרסה קודמת](docs/release.md) · [רישיון הנתונים](https://data.gov.il/he/terms-of-use) · [אתר הייצור](https://mmichaelush.github.io/MyOto/)
+
+[רישיון קוד המקור](LICENSE)

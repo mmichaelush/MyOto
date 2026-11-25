@@ -27,6 +27,7 @@ export function sampleWindows(size: number, maximum: number, strata: number) {
 export function mileageSummary(
   rows: readonly { mispar_rechev: number; kilometer_test_aharon: unknown }[],
   minimum = 20,
+  includeBands = false,
 ) {
   const readings = new Map<number, number | null>();
   for (const row of rows) {
@@ -55,10 +56,51 @@ export function mileageSummary(
       valid[lower] + (index - lower) * (valid[Math.ceil(index)] - valid[lower]),
     );
   }
+  const bands: [upperExclusive: number, count: number][] = [];
+  if (includeBands) {
+    const buckets = new Map<number, number>();
+    for (const reading of valid) {
+      const upper = (Math.floor(reading / 10000) + 1) * 10000;
+      buckets.set(upper, (buckets.get(upper) ?? 0) + 1);
+    }
+    let pending = 0;
+    let last = 0;
+    for (const [upper, count] of buckets) {
+      pending += count;
+      last = upper;
+      if (pending >= 5) {
+        bands.push([upper, pending]);
+        pending = 0;
+      }
+    }
+    if (pending && bands.length) {
+      const final = bands[bands.length - 1];
+      final[0] = last;
+      final[1] += pending;
+    }
+  }
   return {
     n: valid.length,
     p25: quantile(0.25),
     median: quantile(0.5),
     p75: quantile(0.75),
+    ...(bands.length > 1 ? { bands } : {}),
   };
+}
+
+export function mileagePercentileRange(
+  reading: number,
+  bands: readonly (readonly [number, number])[],
+  n: number,
+) {
+  let below = 0;
+  for (const [upper, count] of bands) {
+    if (reading < upper)
+      return [
+        Math.floor((below / n) * 100),
+        Math.ceil(((below + count) / n) * 100),
+      ] as const;
+    below += count;
+  }
+  return [100, 100] as const;
 }

@@ -1,0 +1,227 @@
+﻿---
+import Site from '../../layouts/Site.astro';
+import { tireCatalog } from '../../data/tire-catalog';
+import { resources } from '../../data/sources';
+import { count } from '../../data/catalog';
+import '../../styles/catalog.css';
+
+const sizes = tireCatalog.entries.map(([size]) => size);
+---
+
+<Site title="קטלוג מידות צמיגים">
+  <section class="panel catalog-heading">
+    <h1>קטלוג מידות צמיגים</h1>
+    <p>
+      {count.format(sizes.length)} מידות שנצפו במרשם הפעיל ·{' '}
+      {tireCatalog.updatedAt.slice(0, 10)} ·{' '}
+      <a href={resources.private_cars_1.url}>מקור</a>
+    </p>
+    <p>
+      הטבלה מציגה מידות שנרשמו בפועל. לאישור מידה לרכב מסוים בדקו את רישיון
+      הרכב.
+    </p>
+    <form id="tire-catalog-search" hidden>
+      <div class="catalog-filters">
+        <label class="control">
+          מידת צמיג{' '}
+          <input
+            class="text-input"
+            name="size"
+            list="tire-sizes"
+            dir="ltr"
+            maxlength="20"
+            placeholder="205/55R16"
+            required
+          />
+        </label>
+        <label class="control">
+          יצרן או דגם <input class="text-input" name="model" maxlength="100" />
+        </label>
+        <label class="control">
+          סרן
+          <select name="side">
+            <option value="">כל הסרנים</option>
+            <option value="front">קדמי</option>
+            <option value="rear">אחורי</option>
+          </select>
+        </label>
+      </div>
+      <button>איתור דגמים</button>
+    </form>
+    <datalist id="tire-sizes">
+      {sizes.map((size) => (
+        <option value={size} />
+      ))}
+    </datalist>
+    <p id="tire-catalog-status" role="status"></p>
+    <a href={import.meta.env.BASE_URL + 'tire-size/'} id="tire-calculator">
+      מחשבון מידות צמיגים
+    </a>
+  </section>
+  <section class="panel catalog-data" id="tire-catalog-results" hidden>
+    <h2>דגמים ושנתונים לפי מידה</h2>
+    <div
+      class="table-scroll"
+      role="region"
+      aria-label="דגמים עם מידת הצמיג שנבחרה"
+      tabindex="0"
+    >
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">יצרן ודגם</th>
+            <th scope="col">שנת ייצור</th>
+            <th scope="col">רישומים קדמיים</th>
+            <th scope="col">רישומים אחוריים</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <button id="tire-export" type="button">
+      הורדת תוצאות כ־CSV
+    </button>
+  </section>
+</Site>
+<script>
+  import { parseTireSize } from '../../domain/tires';
+  import { normalizeCatalogTerm } from '../../presentation/catalog-search';
+  import { csvBlob } from '../../ui/csv';
+  import { link } from '../../ui/dom';
+
+  type Model = {
+    make: string;
+    model: string;
+    year: number;
+    path: string;
+    front: number;
+    rear: number;
+  };
+  type Report = { rows: Model[]; unlinked: number[] };
+  const base = import.meta.env.BASE_URL;
+  const form = document.querySelector<HTMLFormElement>('#tire-catalog-search')!;
+  const sizeInput = form.elements.namedItem('size') as HTMLInputElement;
+  const status = document.querySelector<HTMLElement>('#tire-catalog-status')!;
+  const section = document.querySelector<HTMLElement>('#tire-catalog-results')!;
+  const table = section.querySelector('tbody')!;
+  const calculator =
+    document.querySelector<HTMLAnchorElement>('#tire-calculator')!;
+  const sizes = new Set(
+    [...document.querySelectorAll<HTMLOptionElement>('#tire-sizes option')].map(
+      (option) => option.value,
+    ),
+  );
+  const number = new Intl.NumberFormat('he-IL');
+  let active: AbortController | undefined;
+  let cached: { size: string; result: Report } | undefined;
+
+  let exportRows: Model[] = [];
+  let exportSize = '';
+  document.querySelector('#tire-export')!.addEventListener('click', () => {
+    const url = URL.createObjectURL(
+      csvBlob([
+        [
+          'מידה',
+          'יצרן',
+          'דגם',
+          'שנת ייצור',
+          'רישומים קדמיים',
+          'רישומים אחוריים',
+        ],
+        ...exportRows.map((row) => [
+          exportSize,
+          row.make,
+          row.model,
+          row.year,
+          row.front,
+          row.rear,
+        ]),
+      ]),
+    );
+    const download = link('', url);
+    download.download = 'myoto-tires-' + exportSize.replace('/', '-') + '.csv';
+    download.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    active?.abort();
+    const request = new AbortController();
+    active = request;
+    const fields = new FormData(form);
+    const raw = String(fields.get('size') ?? '');
+    const parsed = parseTireSize(raw);
+    section.hidden = true;
+    if (!parsed) {
+      status.textContent = 'הזינו מידה בפורמט 205/55R16.';
+      return;
+    }
+    const size = `${parsed.width}/${parsed.aspect}R${parsed.rim}${/C\s*$/i.test(raw) ? 'C' : ''}`;
+    calculator.href = base + 'tire-size/?size=' + encodeURIComponent(size);
+    if (!sizes.has(size)) {
+      status.textContent = 'המידה לא נמצאה בקטלוג הזמין.';
+      return;
+    }
+    status.textContent = 'טוען דגמים…';
+    try {
+      if (cached?.size !== size) {
+        const response = await fetch(
+          base + 'tires/' + size.replace('/', '-').toLowerCase() + '.json',
+          { signal: request.signal },
+        );
+        if (!response.ok) throw new Error('Tire size unavailable');
+        const result: Report = await response.json();
+        if (request.signal.aborted) return;
+        cached = { size, result };
+      }
+      const { rows, unlinked } = cached.result;
+      const model = normalizeCatalogTerm(String(fields.get('model') ?? ''));
+      const side = fields.get('side');
+      const matches = rows.filter(
+        (row) =>
+          (!model ||
+            normalizeCatalogTerm(row.make + ' ' + row.model).includes(model)) &&
+          (side !== 'front' || row.front > 0) &&
+          (side !== 'rear' || row.rear > 0),
+      );
+      exportRows = matches;
+      exportSize = size;
+      table.replaceChildren();
+      for (const data of matches.slice(0, 100)) {
+        const row = table.insertRow();
+        row
+          .insertCell()
+          .append(
+            link(data.make + ' ' + data.model, base + 'models/' + data.path),
+          );
+        for (const value of [
+          String(data.year),
+          number.format(data.front),
+          number.format(data.rear),
+        ])
+          row.insertCell().textContent = value;
+      }
+      section.hidden = !matches.length;
+      const missing =
+        side === 'front'
+          ? unlinked[0]
+          : side === 'rear'
+            ? unlinked[1]
+            : unlinked[0] + unlinked[1];
+      status.textContent = matches.length
+        ? `נמצאו ${number.format(matches.length)} דגמים ושנתונים.${matches.length > 100 ? ' מוצגות 100 תוצאות.' : ''}`
+        : 'לא נמצאו דגמים תואמים בקטלוג.';
+      if (!model && missing)
+        status.textContent += ` ${number.format(missing)} רישומי סרן נוספים חסרים שיוך לדגם בקטלוג.`;
+    } catch {
+      if (!request.signal.aborted)
+        status.textContent = 'טעינת מידת הצמיג לא הצליחה.';
+    }
+  });
+  sizeInput.value = (
+    new URLSearchParams(location.search).get('size') ?? ''
+  ).slice(0, 20);
+  form.hidden = false;
+  if (sizeInput.value) form.requestSubmit();
+</script>

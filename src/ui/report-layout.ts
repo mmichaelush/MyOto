@@ -2,8 +2,10 @@
 import { logFailure } from './diagnostics';
 import { icon } from './icons';
 
-const storageKey = 'myoto-report-order-v2';
-const legacyKey = 'myoto-report-order';
+import {
+  reportOrderKey as storageKey,
+  legacyReportOrderKey as legacyKey,
+} from './local-vehicle-data';
 const previousTitles: Record<string, string> = {
   'פרטי הרכב': 'identity',
   'רישוי ובעלות': 'registration',
@@ -182,9 +184,22 @@ export function arrangeReport(grid: HTMLElement) {
       const target = document
         .elementFromPoint(event.clientX, event.clientY)
         ?.closest<HTMLElement>('[data-section-id]');
+      const nearby =
+        target ??
+        sections.find((card) => {
+          if (card === section) return false;
+          const bounds = card.getBoundingClientRect();
+          const tolerance = 10;
+          return (
+            event.clientX >= bounds.left - tolerance &&
+            event.clientX <= bounds.right + tolerance &&
+            event.clientY >= bounds.top - tolerance &&
+            event.clientY <= bounds.bottom + tolerance
+          );
+        });
       highlight(
-        target?.parentElement === grid && target !== section
-          ? target
+        nearby?.parentElement === grid && nearby !== section
+          ? nearby
           : undefined,
       );
       if (event.clientY < 55) window.scrollBy(0, -16);

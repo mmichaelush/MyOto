@@ -1,0 +1,362 @@
+﻿---
+import Site from '../../layouts/Site.astro';
+import { engineChangePeriods, retiredYears } from '../../data/engine-changes';
+import { resources } from '../../data/sources';
+import '../../styles/catalog.css';
+const base = import.meta.env.BASE_URL;
+---
+
+<Site title="החלפות מנועים וירידה מהכביש">
+  <section class="panel catalog-heading">
+    <h1>החלפות מנועים וירידה מהכביש</h1>
+    <p>
+      שינוי במספר מנוע מזוהה בהשוואת צילומי מצב של אותו רכב. חלון התצפית מציג
+      מתי השינוי זוהה. תאריך ההחלפה והנסועה בעת ההחלפה דורשים תיעוד מהאירוע
+      עצמו.
+    </p>
+    <p>
+      <a href={base + 'engines/'}>קטלוג קודי מנוע</a> ·{' '}
+      <a href={resources.offRoad_1.url}>מקור רישומי ירידה מהכביש</a>
+    </p>
+    {!engineChangePeriods.length && (
+      <p>
+        מחכה לצילום מצב נוסף להשוואת מספרי מנוע. נתוני ירידה מהכביש כבר זמינים
+        לפי שנת ביטול.
+      </p>
+    )}
+    <form id="engine-trends" hidden>
+      <div class="catalog-filters">
+        <label class="control">
+          נתונים{' '}
+          <select name="mode">
+            <option value="changes">שינויי מספר מנוע</option>
+            <option value="retired">רכבים שירדו מהכביש</option>
+          </select>
+        </label>
+        <label class="control">
+          תצוגה{' '}
+          <select name="period">
+            <option value="month">חודשית</option>
+            <option value="year">שנתית</option>
+          </select>
+        </label>
+        <label class="control">
+          שנה{' '}
+          <select name="year">
+            <option value="">כל השנים</option>
+            {retiredYears.map((year) => (
+              <option value={year}>{year}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div class="catalog-filters">
+        <label class="control">
+          תוצר רכב <input class="text-input" name="make" maxlength="80" />
+        </label>
+        <label class="control">
+          דגם רכב <input class="text-input" name="model" maxlength="80" />
+        </label>
+        <label class="control">
+          קוד או תוצר מנוע{' '}
+          <input class="text-input" name="engine" maxlength="80" />
+        </label>
+      </div>
+      <button>הצגה</button>
+    </form>
+    <p id="engine-trend-status" role="status"></p>
+  </section>
+  <section id="engine-trend-results" class="panel catalog-data" hidden>
+    <h2>תוצאות</h2>
+    <div
+      class="table-scroll"
+      role="region"
+      aria-label="סטטיסטיקות מנועים"
+      tabindex="0"
+    >
+      <table>
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</Site>
+
+<script>
+  import { dateLabel } from '../../domain/format';
+  import { normalizeCatalogTerm } from '../../presentation/catalog-search';
+  import { element } from '../../ui/dom';
+  type Period = {
+    fleet: string;
+    from: string;
+    to: string;
+    fromDate?: string;
+    toDate?: string;
+    comparable: number;
+    changed: number | null;
+    rows: {
+      make: string;
+      model: string;
+      code: string;
+      comparable: number;
+      changed: number;
+      observedKm?: number | null;
+    }[];
+  };
+  type Retired = [
+    make: string,
+    model: string,
+    code: string,
+    engineMaker: string,
+    count: number,
+  ];
+  const form = document.querySelector<HTMLFormElement>('#engine-trends')!;
+  const mode = form.elements.namedItem('mode') as HTMLSelectElement;
+  const annual = form.elements.namedItem('period') as HTMLSelectElement;
+  const yearInput = form.elements.namedItem('year') as HTMLSelectElement;
+  const status = document.querySelector<HTMLElement>('#engine-trend-status')!;
+  const result = document.querySelector<HTMLElement>('#engine-trend-results')!;
+  const table = result.querySelector('table')!;
+  const number = new Intl.NumberFormat('he-IL');
+  const base = import.meta.env.BASE_URL + 'engine-changes/';
+  const cache = new Map<string, Promise<unknown>>();
+  let generation = 0;
+
+  function load<T>(file: string) {
+    let pending = cache.get(file);
+    if (!pending) {
+      pending = fetch(base + file).then((response) => {
+        if (!response.ok) throw new Error('Engine data unavailable');
+        return response.json();
+      });
+      cache.set(file, pending);
+      void pending.catch(() => cache.delete(file));
+    }
+    return pending as Promise<T>;
+  }
+
+  function draw(labels: string[], rows: (string | number | null)[][]) {
+    const head = table.tHead!;
+    head.replaceChildren();
+    const header = head.insertRow();
+    for (const label of labels) {
+      const th = element('th', label);
+      th.scope = 'col';
+      header.append(th);
+    }
+    const body = table.tBodies[0];
+    body.replaceChildren();
+    for (const values of rows.slice(0, 100)) {
+      const row = body.insertRow();
+      for (const value of values)
+        row.insertCell().textContent =
+          value === null
+            ? '—'
+            : typeof value === 'number'
+              ? number.format(value)
+              : value;
+    }
+    result.hidden = false;
+    status.textContent =
+      rows.length > 100
+        ? `מוצגות 100 מתוך ${number.format(rows.length)} תוצאות.`
+        : `${number.format(rows.length)} תוצאות.`;
+  }
+
+  const observationDay = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Jerusalem',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const windowLabel = (period: Period) =>
+    period.fromDate && period.toDate
+      ? [
+          dateLabel(observationDay.format(new Date(period.fromDate))),
+          dateLabel(observationDay.format(new Date(period.toDate))),
+        ].join(' – ')
+      : period.from + ' – ' + period.to;
+
+  async function refresh() {
+    const current = ++generation;
+    result.hidden = true;
+    status.textContent = 'טוען נתונים…';
+    const fields = new FormData(form);
+    const year = yearInput.value;
+    const includes = (value: string, field: string) =>
+      normalizeCatalogTerm(value).includes(
+        normalizeCatalogTerm(String(fields.get(field) ?? '')),
+      );
+    try {
+      if (mode.value === 'retired') {
+        if (!year) {
+          status.textContent = 'בחרו שנת ביטול.';
+          return;
+        }
+        const rows = await load<Retired[]>(year + '.json');
+        if (current !== generation) return;
+        const matching = rows
+          .filter(
+            ([make, model, code, maker]) =>
+              includes(make, 'make') &&
+              includes(model, 'model') &&
+              includes(code + ' ' + maker, 'engine'),
+          )
+          .sort((a, b) => b[4] - a[4]);
+        if (!matching.length) {
+          status.textContent = 'לא נמצאו רישומי ביטול תואמים.';
+          return;
+        }
+        draw(
+          ['תוצר רכב', 'דגם רכב', 'קוד מנוע', 'תוצר מנוע', 'רישומי ביטול'],
+          matching,
+        );
+        return;
+      }
+      const periods = (await load<Period[]>('observations.json')).filter(
+        (period) =>
+          (!year || period.to.startsWith(year + '-')) &&
+          (annual.value !== 'year' || period.from !== period.to),
+      );
+      if (current !== generation) return;
+      if (!periods.length) {
+        status.textContent = 'אין תקופות השוואה שמתאימות לתצוגה שנבחרה.';
+        return;
+      }
+      const filtered = ['make', 'model', 'engine'].some((key) =>
+        String(fields.get(key) ?? '').trim(),
+      );
+      if (filtered) {
+        const entries = periods.flatMap((period) =>
+          period.rows
+            .filter(
+              (row) =>
+                includes(row.make, 'make') &&
+                includes(row.model, 'model') &&
+                includes(row.code, 'engine'),
+            )
+            .map((row) => ({ period, row })),
+        );
+        if (!entries.length) {
+          status.textContent = 'לא פורסמו קבוצות תואמות למסננים.';
+          return;
+        }
+        const headers = [
+          'מאגר',
+          'תוצר רכב',
+          'דגם רכב',
+          'קוד מנוע',
+          'השוואות',
+          'שינויי מספר מנוע',
+        ];
+        if (annual.value === 'year') {
+          const groups = new Map<
+            string,
+            { dimensions: string[]; comparable: number; changed: number }
+          >();
+          for (const { period, row } of entries) {
+            const dimensions = [
+              period.to.slice(0, 4),
+              period.fleet,
+              row.make,
+              row.model,
+              row.code,
+            ];
+            const key = JSON.stringify(dimensions);
+            const group = groups.get(key) ?? {
+              dimensions,
+              comparable: 0,
+              changed: 0,
+            };
+            group.comparable += row.comparable;
+            group.changed += row.changed;
+            groups.set(key, group);
+          }
+          draw(
+            ['שנת זיהוי', ...headers],
+            [...groups.values()].map(({ dimensions, comparable, changed }) => [
+              ...dimensions,
+              comparable,
+              changed,
+            ]),
+          );
+          status.textContent += ' הסכומים כוללים קבוצות שפורסמו בלבד.';
+        } else {
+          draw(
+            ['חלון תצפית', ...headers, 'ק״מ ממוצע בצילום המאוחר'],
+            entries.map(({ period, row }) => [
+              windowLabel(period),
+              period.fleet,
+              row.make,
+              row.model,
+              row.code,
+              row.comparable,
+              row.changed,
+              row.observedKm ?? null,
+            ]),
+          );
+        }
+      } else if (annual.value === 'year') {
+        const groups = new Map<
+          string,
+          { count: number; comparable: number; changed: number | null }
+        >();
+        for (const period of periods) {
+          const id = period.to.slice(0, 4) + ' · ' + period.fleet;
+          const group = groups.get(id) ?? {
+            count: 0,
+            comparable: 0,
+            changed: 0,
+          };
+          group.count++;
+          group.comparable += period.comparable;
+          group.changed =
+            period.changed === null || group.changed === null
+              ? null
+              : group.changed + period.changed;
+          groups.set(id, group);
+        }
+        draw(
+          [
+            'שנת זיהוי ומאגר',
+            'חלונות שנכללו',
+            'השוואות בין צילומים',
+            'שינויי מספר מנוע',
+          ],
+          [...groups].map(([id, group]) => [
+            id,
+            group.count,
+            group.comparable,
+            group.changed,
+          ]),
+        );
+      } else {
+        draw(
+          ['חלון תצפית', 'מאגר', 'רכבים בהשוואה', 'שינויי מספר מנוע'],
+          periods.map((p) => [
+            windowLabel(p),
+            p.fleet,
+            p.comparable,
+            p.changed,
+          ]),
+        );
+      }
+    } catch {
+      if (current === generation) status.textContent = 'טעינת הנתונים נכשלה.';
+    }
+  }
+  function setMode() {
+    annual.disabled = mode.value === 'retired';
+    if (annual.disabled && !yearInput.value) yearInput.selectedIndex = 1;
+  }
+  mode.addEventListener('change', () => {
+    setMode();
+    void refresh();
+  });
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void refresh();
+  });
+  setMode();
+  form.hidden = false;
+</script>

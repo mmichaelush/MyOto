@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { chromium } from 'playwright';
 import { readFile } from 'node:fs/promises';
 import { setTimeout } from 'node:timers/promises';
@@ -8,6 +9,7 @@ const base = process.env.MYOTO_PREVIEW_BASE ?? 'http://127.0.0.1:4322/MyOto/';
 const referenceBase = process.env.MYOTO_REFERENCE_BASE;
 const verifyFields = process.argv.includes('--verify-fields');
 const controlled = process.argv.includes('--controlled');
+const random = process.argv.includes('--random');
 const testPlates = new Map([
   ['רישוי עם מאגר ארכיוני איטי', '11234567'],
   ['חפיפה עם צמ״ה', '21234567'],
@@ -37,12 +39,29 @@ async function sample(source, field, filter) {
     limit: '15',
     include_total: 'false',
   });
-  const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
-  if (!response.ok) throw new Error('HTTP ' + response.status);
-  const body = await response.json();
+  const read = async () => {
+    const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const body = await response.json();
+    if (body.success !== true) throw new Error('Invalid CKAN response');
+    return body.result;
+  };
+  if (random) {
+    url.searchParams.set('limit', '0');
+    url.searchParams.set('include_total', 'true');
+    url.searchParams.set('total_estimation_threshold', '10000000');
+    const { total, total_was_estimated } = await read();
+    if (!Number.isSafeInteger(total) || total_was_estimated)
+      throw new Error('Exact population unavailable');
+    url.searchParams.set('limit', '15');
+    url.searchParams.set('include_total', 'false');
+    url.searchParams.set('sort', '_id asc');
+    url.searchParams.set('offset', String(randomInt(Math.max(1, total - 14))));
+  }
+  const result = await read();
   return [
     ...new Set(
-      (body.result?.records ?? [])
+      (result.records ?? [])
         .map((row) => String(row[field] ?? ''))
         .filter((value) => /^\d{4,8}$/.test(value)),
     ),
@@ -95,6 +114,7 @@ async function measure(browser, plate, address = base) {
       firstMs: first,
       fullMs: Math.round(performance.now() - timer),
       outcome,
+      status: (await page.locator('.vehicle-status').allTextContents())[0],
       ...(verifyFields && (await fieldCheck(page, responses))),
     };
   } finally {

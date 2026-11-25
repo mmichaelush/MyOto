@@ -1,21 +1,27 @@
-MIT License
+﻿# Proprietary Source-Available License
 
-Copyright (c) 2025 מיכאלוש
+Copyright (c) 2026 מיכאלוש
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+All rights reserved.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+The source code and associated materials in this repository are made publicly available for inspection, review, and contribution purposes only.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Except as expressly permitted by GitHub's Terms of Service, applicable law, or the limited permissions stated below, no person or entity may use, reproduce, modify, distribute, sublicense, sell, publish, deploy, or incorporate this software, in whole or in part, into any other project or service without the prior express written permission of the copyright holder.
+
+## Contributions
+
+Permission is granted to clone, fork, modify, and test this repository solely for the purpose of reviewing the code, reporting issues, and preparing and submitting contributions to the official project.
+
+This permission does not authorize independent distribution, deployment, publication of modified releases, or use in separate projects, whether commercial or non-commercial.
+
+By submitting a contribution, including a Pull Request, the contributor grants the copyright holder a perpetual, worldwide, irrevocable, royalty-free, non-exclusive license to use, reproduce, modify, distribute, sublicense, and incorporate that contribution into the project under any licensing terms.
+
+Contributors represent that they have the necessary rights to grant these permissions.
+
+## Permission Requests
+
+Any use beyond the permissions expressly granted above requires prior written authorization from the copyright holder.
+
+## Disclaimer
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE COPYRIGHT HOLDER SHALL NOT BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE SOFTWARE OR ITS USE.

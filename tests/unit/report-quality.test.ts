@@ -1,7 +1,11 @@
 import { expect, test } from 'vitest';
 import { expiredDays, ownershipDate } from '../../src/domain/format';
+import { vehicleTimeline } from '../../src/domain/vehicle-timeline';
 import { buildReport } from '../../src/domain/report';
-import { vehicleViewModel } from '../../src/presentation/vehicle-view-model';
+import {
+  licensingFeeParameters,
+  vehicleViewModel,
+} from '../../src/presentation/vehicle-view-model';
 import type { Row } from '../../src/data/types';
 
 const source = (...rows: Row[]) => ({
@@ -175,4 +179,58 @@ test('puts eligible model towing specifications in the dimensions card without t
     ['kosher_grira_im_blamim', '750 ק״ג', 'model'],
     ['kosher_grira_bli_blamim', '0 ק״ג', 'model'],
   ]);
+});
+
+test('leaves fee group unset when model variants disagree or are incomplete', () => {
+  const key = {
+    sug_degem: 'P',
+    tozeret_cd: 839,
+    degem_cd: 218,
+    shnat_yitzur: 2020,
+  };
+  for (const otherGroup of [4, null]) {
+    const report = buildReport(
+      '11234567',
+      'registration',
+      {
+        private_cars_1: source({ ...key, moed_aliya_lakvish: '2021-1' }),
+        modelDetails: source(
+          { ...key, kvuzat_agra_cd: 3 },
+          { ...key, kvuzat_agra_cd: otherGroup },
+        ),
+      },
+      true,
+    );
+    expect(licensingFeeParameters(report).toString()).toBe('year=2021');
+  }
+});
+
+test('orders dated events while preserving separate ownership records in a quarter', () => {
+  const report = buildReport(
+    '11234567',
+    'registration',
+    {
+      private_cars_1: source({
+        moed_aliya_lakvish: '2021-1',
+        mivchan_acharon_dt: '2025-07-12',
+        kilometer_test_aharon: 123456,
+      }),
+      history_2: source(
+        { baalut_dt: 202202, baalut: 'פרטי' },
+        { baalut_dt: 202203, baalut: 'סוחר' },
+        { baalut_dt: 202213, baalut: 'מועד פגום' },
+      ),
+    },
+    true,
+  );
+  const rows = vehicleTimeline(report);
+  expect(rows.map((row) => row[1])).toEqual([
+    'טסט אחרון לפי המרשם',
+    'סוחר',
+    'פרטי',
+    'עלייה לכביש',
+  ]);
+  expect(rows[1][0]).toBe(rows[2][0]);
+  expect(rows[3][0]).toBe('01/2021');
+  expect(rows.flat()).not.toContain('123456');
 });

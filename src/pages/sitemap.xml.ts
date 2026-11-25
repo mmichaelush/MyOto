@@ -1,3 +1,6 @@
+import { specialtySources } from '../domain/specialty-catalog';
+import { registrationYears } from '../data/registrations';
+import { engines } from '../data/engine-catalog';
 import { catalog, years } from '../data/catalog';
 
 export function GET() {
@@ -15,7 +18,35 @@ export function GET() {
       }),
     ]),
   ];
-  const urls = paths
+  const tools = [
+    'fleet/',
+    ...Object.keys(specialtySources).map(
+      (source) => 'vehicle-catalogs/' + source + '/',
+    ),
+    'electric/',
+
+    ...registrationYears.map((year) => 'registrations/' + year + '/'),
+    'engines/',
+    'engine-changes/',
+    ...engines
+      .filter(({ observed }) => observed > 0)
+      .map(({ id }) => 'engines/' + id + '/'),
+    'buying-guide/',
+    'compare-models/',
+    'glossary/',
+    'garages/',
+    'dealers/',
+    'recalls/',
+    'importers/',
+    'licensing-fees/',
+    'inspection-fees/',
+    'vehicle-cost/',
+    'depreciation/',
+    'charging-cost/',
+    'tire-size/',
+    'tires/',
+  ];
+  const urls = [...paths, ...tools.map((path) => '../' + path)]
     .map((path) => `<url><loc>${new URL(path, base).href}</loc></url>`)
     .join('');
   return new Response(

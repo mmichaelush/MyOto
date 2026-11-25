@@ -1,0 +1,65 @@
+﻿---
+import Site from '../layouts/Site.astro';
+import '../styles/catalog.css';
+---
+
+<Site title="מחשבון גיל רכב">
+  <section class="panel catalog-heading">
+    <h1>מחשבון גיל רכב</h1>
+    <form id="vehicle-age" hidden>
+      <label class="control">
+        חודש עלייה לכביש{' '}
+        <input
+          class="text-input"
+          type="month"
+          name="month"
+          min="1900-01"
+          required
+        />
+      </label>
+      <button>חישוב גיל</button>
+    </form>
+    <p id="vehicle-age-result" role="status"></p>
+  </section>
+</Site>
+<script>
+  const form = document.querySelector<HTMLFormElement>('#vehicle-age')!;
+  const input = form.elements.namedItem('month') as HTMLInputElement;
+  const output = document.querySelector<HTMLElement>('#vehicle-age-result')!;
+  const current = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Jerusalem',
+    year: 'numeric',
+    month: '2-digit',
+  }).format(new Date());
+  input.max = current;
+  function calculate(event?: SubmitEvent) {
+    event?.preventDefault();
+    if (!form.checkValidity()) return;
+    const [year, month] = input.value.split('-').map(Number);
+    const [currentYear, currentMonth] = current.split('-').map(Number);
+    const age = (currentYear - year) * 12 + currentMonth - month;
+    if (!age) {
+      output.textContent = 'הרכב נרשם החודש.';
+      return;
+    }
+    const years = Math.floor(age / 12);
+    const months = age % 12;
+    const elapsed = [
+      years === 1 ? 'שנה' : years ? `${years} שנים` : '',
+      months === 1 ? 'חודש' : months ? `${months} חודשים` : '',
+    ]
+      .filter(Boolean)
+      .join(months > 1 ? ' ו־' : ' ו');
+    output.textContent = `גיל הרכב לפי חודש הרישום הראשון · ${elapsed}`;
+  }
+  form.addEventListener('submit', calculate);
+  input.addEventListener('input', () => {
+    output.textContent = '';
+  });
+  const month = new URLSearchParams(location.search).get('month');
+  if (month && /^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)) {
+    input.value = month;
+    calculate();
+  }
+  form.hidden = false;
+</script>

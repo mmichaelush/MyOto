@@ -1,0 +1,203 @@
+﻿---
+import Site from '../layouts/Site.astro';
+import { resources } from '../data/sources';
+import '../styles/catalog.css';
+---
+
+<Site title="קריאות שירות לפי דגם">
+  <section class="panel catalog-heading">
+    <h1>קריאות שירות לפי דגם</h1>
+    <p>
+      חיפוש בהודעות יצרנים לפי שם תוצר ודגם. לבירור אם קריאה חלה על רכב מסוים,
+      פנו ליבואן עם מספר הרישוי או השלדה.
+    </p>
+    <form id="campaign-search" hidden>
+      <div class="grid-data">
+        <label class="control">
+          תוצר <input class="text-input" name="make" maxlength="80" />
+        </label>
+        <label class="control">
+          דגם <input class="text-input" name="model" maxlength="80" />
+        </label>
+        <label class="control">
+          שנת ייצור{' '}
+          <input
+            class="text-input"
+            name="year"
+            type="number"
+            min="1900"
+            max="2100"
+          />
+        </label>
+      </div>
+      <button>חיפוש קריאות שירות</button>
+    </form>
+    <p id="campaign-status" role="status"></p>
+    <p>
+      <a href={resources.campaigns.url}>מאגר הודעות היצרנים</a> ·
+      <a href="https://www.gov.il/he/service/recall-vehicle">
+        בירור רשמי של קריאה חוזרת
+      </a>{' '}
+      ·<a href={import.meta.env.BASE_URL}>בדיקה לפי לוחית</a>
+    </p>
+  </section>
+  <div id="campaign-results"></div>
+</Site>
+<script>
+  import { resources } from '../data/sources';
+  import { dateLabel, dateOrder } from '../domain/format';
+  import { element } from '../ui/dom';
+  import { directoryKey, readDirectory } from '../ui/public-directory';
+
+  const fields = [
+    'RECALL_ID',
+    'TOZAR_TEUR',
+    'DEGEM',
+    'SHNAT_RECALL',
+    'BUILD_BEGIN_A',
+    'BUILD_END_A',
+    'SUG_RECALL',
+    'SUG_TAKALA',
+    'TEUR_TAKALA',
+    'OFEN_TIKUN',
+    'YEVUAN_TEUR',
+  ] as const;
+  type Row = Record<(typeof fields)[number], unknown>;
+  const form = document.querySelector<HTMLFormElement>('#campaign-search')!;
+  const status = document.querySelector<HTMLElement>('#campaign-status')!;
+  const results = document.querySelector<HTMLElement>('#campaign-results')!;
+  const text = (value: unknown) =>
+    typeof value === 'string' ? value.trim() : '';
+  const normal = (value: unknown) => directoryKey(text(value)).toUpperCase();
+  let active: AbortController | undefined;
+  let snapshot: Row[] | undefined;
+
+  function buildDate(value: unknown) {
+    const date = text(value);
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) && dateOrder(date) ? date : '';
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    active?.abort();
+    const request = new AbortController();
+    active = request;
+    const data = new FormData(form);
+    const make = normal(data.get('make'));
+    const model = normal(data.get('model'));
+    const year = Number(data.get('year'));
+    results.replaceChildren();
+    if (!make && !model) {
+      status.textContent = 'הקלידו שם תוצר או דגם.';
+      return;
+    }
+    status.textContent = 'מחפש בהודעות היצרנים…';
+    try {
+      snapshot ??= await readDirectory(
+        resources.campaigns.id,
+        fields,
+        request.signal,
+      );
+      if (request.signal.aborted) return;
+      const seen = new Set<string>();
+      const matches = snapshot
+        .flatMap((row) => {
+          if (
+            !row ||
+            !normal(row.TOZAR_TEUR).includes(make) ||
+            !normal(row.DEGEM).includes(model)
+          )
+            return [];
+          const from = buildDate(row.BUILD_BEGIN_A);
+          const to = buildDate(row.BUILD_END_A);
+          if (
+            year &&
+            (!from ||
+              !to ||
+              from > to ||
+              Number(from.slice(0, 4)) > year ||
+              Number(to.slice(0, 4)) < year)
+          )
+            return [];
+          const key = JSON.stringify(fields.map((field) => row[field]));
+          if (seen.has(key)) return [];
+          seen.add(key);
+          return [{ row, from, to }];
+        })
+        .sort(
+          (a, b) =>
+            Number(b.row.SHNAT_RECALL ?? 0) - Number(a.row.SHNAT_RECALL ?? 0),
+        );
+      for (const { row, from, to } of matches.slice(0, 50)) {
+        const card = element('article', undefined, 'panel catalog-data');
+        const title = [text(row.TOZAR_TEUR), text(row.DEGEM)]
+          .filter(Boolean)
+          .join(' · ');
+        card.append(element('h2', title || 'קריאת שירות'));
+        const facts = [
+          [
+            'מזהה קריאה',
+            typeof row.RECALL_ID === 'number' ? String(row.RECALL_ID) : '',
+          ],
+          ['סוג קריאה', text(row.SUG_RECALL)],
+          [
+            'שנת הקריאה',
+            typeof row.SHNAT_RECALL === 'number'
+              ? String(row.SHNAT_RECALL)
+              : '',
+          ],
+          [
+            'טווח ייצור',
+            from && to && from <= to
+              ? `${dateLabel(from)} – ${dateLabel(to)}`
+              : '',
+          ],
+          ['יבואן', text(row.YEVUAN_TEUR)],
+          ['ליקוי', text(row.TEUR_TAKALA) || text(row.SUG_TAKALA)],
+          ['תיקון', text(row.OFEN_TIKUN)],
+        ];
+        const details = element('dl', undefined, 'grid-data');
+        for (const [label, value] of facts) {
+          if (!value) continue;
+          const item = element('div', undefined, 'datum');
+          item.append(element('dt', label), element('dd', value));
+          details.append(item);
+        }
+        card.append(details);
+        results.append(card);
+      }
+      status.textContent =
+        matches.length > 50
+          ? `נמצאו ${matches.length} הודעות. מוצגות 50 תוצאות.`
+          : matches.length
+            ? `נמצאו ${matches.length} הודעות במאגר.`
+            : 'לא נמצאו הודעות מתאימות במאגר. אפשר להרחיב את החיפוש או לברר מול היבואן.';
+    } catch {
+      if (!request.signal.aborted)
+        status.textContent =
+          'מאגר הודעות היצרנים אינו זמין כרגע. אפשר להשתמש בבירור הרשמי.';
+    }
+  });
+
+  const params = new URLSearchParams(location.search);
+  for (const field of ['make', 'model', 'year']) {
+    const input = form.elements.namedItem(field) as HTMLInputElement;
+    const value = params.get(field) ?? '';
+    input.value =
+      field === 'year'
+        ? /^\d{4}$/.test(value)
+          ? value
+          : ''
+        : value.slice(0, 80);
+  }
+  form.hidden = false;
+</script>
+
+<style>
+  #campaign-results {
+    overflow-wrap: anywhere;
+  }
+  #campaign-results :global(.datum) {
+    min-inline-size: 0;
+  }
+</style>

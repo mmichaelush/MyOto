@@ -1,0 +1,417 @@
+﻿---
+import Site from '../../layouts/Site.astro';
+import '../../styles/catalog.css';
+import { resources } from '../../data/sources';
+---
+
+<Site title="השוואת דגמים ושנתונים">
+  <section class="panel catalog-heading">
+    <h1>השוואת דגמים ושנתונים</h1>
+    <a href={import.meta.env.BASE_URL + 'compare/'}>השוואה לפי מספרי רישוי</a>
+    <form id="compare-models" hidden>
+      <div class="grid-data">
+        {['א׳', 'ב׳'].map((side) => (
+          <fieldset>
+            <legend>דגם {side}</legend>
+            <label class="control">
+              יצרן <select name="make" required></select>
+            </label>
+            <label class="control">
+              דגם <select name="model" required></select>
+            </label>
+            <label class="control">
+              שנת ייצור <select name="year" required></select>
+            </label>
+            <label class="control">
+              קוד מנוע <select name="engine"></select>
+            </label>
+          </fieldset>
+        ))}
+      </div>
+      <button>השוואה</button>
+    </form>
+    <p id="model-compare-status" role="status"></p>
+  </section>
+  <section id="model-comparison" class="panel catalog-data" hidden></section>
+  <details class="panel">
+    <summary>מקורות ההשוואה</summary>
+    <ul>
+      <li>
+        <a href={resources.modelDetails.url}>מפרטי דגמים וגרסאות</a>
+      </li>
+      <li>
+        <a href={resources.modelCounts.url}>ספירות רכבים לפי דגם ושנתון</a>
+      </li>
+      <li>
+        <a href={import.meta.env.BASE_URL + 'engines/'}>
+          קודי מנוע במרשם הפעיל
+        </a>
+      </li>
+      <li>
+        <a href={resources.history_1.url}>
+          קריאות נסועה אחרונות שמשמשות למדגמים
+        </a>
+      </li>
+    </ul>
+  </details>
+</Site>
+
+<script>
+  import { csvBlob } from '../../ui/csv';
+  import { button, element, link } from '../../ui/dom';
+  import type { CatalogSearchItem } from '../../presentation/catalog-search';
+
+  type Year = {
+    counts: { active: number; inactive: number };
+    fuels: string[];
+    displacement: string[];
+    drive: string[];
+    country: string[];
+    feeGroup: string[];
+    safety: string[];
+    engines: {
+      code: string;
+      observed: number;
+      fuels: string[];
+      displacement: string[];
+      drive: string[];
+    }[];
+    mileage: { median: number; n: number; date: string } | null;
+  };
+  type Shard = Record<string, Record<string, Year>>;
+
+  const base = import.meta.env.BASE_URL;
+  const form = document.querySelector<HTMLFormElement>('#compare-models')!;
+  const status = document.querySelector<HTMLElement>('#model-compare-status')!;
+  const result = document.querySelector<HTMLElement>('#model-comparison')!;
+  const groups = Array.from(form.querySelectorAll('fieldset'), (set) => ({
+    make: set.querySelector<HTMLSelectElement>('[name=make]')!,
+    model: set.querySelector<HTMLSelectElement>('[name=model]')!,
+    year: set.querySelector<HTMLSelectElement>('[name=year]')!,
+    engine: set.querySelector<HTMLSelectElement>('[name=engine]')!,
+    version: 0,
+  }));
+  const shards = new Map<string, Promise<Shard>>();
+  const number = new Intl.NumberFormat('he-IL');
+  let index: CatalogSearchItem[] = [];
+  let generation = 0;
+
+  async function json<T>(path: string): Promise<T> {
+    const response = await fetch(base + path);
+    if (!response.ok) throw new Error('Catalog resource unavailable');
+    return response.json();
+  }
+  function fill(
+    select: HTMLSelectElement,
+    options: [string, string][],
+    preferred?: string,
+  ) {
+    select.replaceChildren(
+      ...options.map(([value, label]) => new Option(label, value)),
+    );
+    if (preferred && options.some(([value]) => value === preferred))
+      select.value = preferred;
+  }
+  function models(
+    group: (typeof groups)[number],
+    preferred?: string,
+    year?: string,
+  ) {
+    const choices = index.filter(({ path }) =>
+      path.startsWith(group.make.value + '/'),
+    );
+    fill(
+      group.model,
+      choices.map(({ path, name }) => [path, name]),
+      preferred,
+    );
+    fillYears(group, year);
+  }
+  function fillYears(group: (typeof groups)[number], year?: string) {
+    const choice = index.find(({ path }) => path === group.model.value);
+    fill(
+      group.year,
+      (choice?.years ?? []).map((year) => [String(year), String(year)]),
+      year,
+    );
+  }
+  function invalidate() {
+    generation++;
+    result.hidden = true;
+    status.textContent = '';
+  }
+  function shard(make: string) {
+    let pending = shards.get(make);
+    if (!pending) {
+      pending = json<Shard>(
+        'compare-models/' + encodeURIComponent(make) + '.json',
+      );
+      shards.set(make, pending);
+      void pending.catch(() => shards.delete(make));
+    }
+    return pending;
+  }
+  async function loadEngines(
+    group: (typeof groups)[number],
+    preferred?: string,
+  ) {
+    const current = ++group.version;
+    group.engine.disabled = true;
+    fill(group.engine, [['', 'כל המנועים בשנתון']]);
+    const make = group.make.value;
+    const model = group.model.value.split('/')[1];
+    const year = group.year.value;
+    try {
+      const data = (await shard(make))[model]?.[year];
+      if (current !== group.version) return;
+      fill(
+        group.engine,
+        [
+          ['', 'כל המנועים בשנתון'],
+          ...(data?.engines ?? []).map(({ code }): [string, string] => [
+            code,
+            code,
+          ]),
+        ],
+        preferred,
+      );
+    } catch {
+      if (current === group.version)
+        status.textContent = 'טעינת קודי המנוע לא הצליחה.';
+    } finally {
+      if (current === group.version) group.engine.disabled = false;
+    }
+  }
+
+  async function compare() {
+    const current = ++generation;
+    result.hidden = true;
+    status.textContent = 'טוען מפרטי שנתונים…';
+    try {
+      const sides = await Promise.all(
+        groups.map(async (group) => {
+          const make = group.make.value;
+          const path = group.model.value;
+          const year = group.year.value;
+          const code = group.engine.value;
+          const model = index.find((entry) => entry.path === path)!;
+          const data = (await shard(make))[path.split('/')[1]]?.[year];
+          if (!data) throw new Error('Year unavailable');
+          return {
+            data,
+            engine: data.engines.find((engine) => engine.code === code),
+            href: base + 'models/' + path + '/' + year + '/',
+            title: [model.make, model.name, year, code]
+              .filter(Boolean)
+              .join(' '),
+          };
+        }),
+      );
+      if (current !== generation) return;
+      const rows = [
+        [
+          'ארץ תוצר במפרט',
+          ({ data, engine }: (typeof sides)[number]) =>
+            engine ? '' : data.country.join(' · '),
+        ],
+        [
+          'קבוצת אגרה במפרט',
+          ({ data, engine }: (typeof sides)[number]) =>
+            engine ? '' : data.feeGroup.join(' · '),
+        ],
+        [
+          'רמת אבזור בטיחותי במפרט',
+          ({ data, engine }: (typeof sides)[number]) =>
+            engine ? '' : data.safety.join(' · '),
+        ],
+        [
+          'דלק',
+          ({ data, engine }: (typeof sides)[number]) =>
+            (engine ?? data).fuels.join(' · '),
+        ],
+        [
+          'הנעה',
+          ({ data, engine }: (typeof sides)[number]) =>
+            (engine ?? data).drive.join(' · '),
+        ],
+        [
+          'נפח מנוע בסמ״ק',
+          ({ data, engine }: (typeof sides)[number]) =>
+            (engine ?? data).displacement.join(' · '),
+        ],
+        [
+          'קודי מנוע שנצפו',
+          ({ data, engine }: (typeof sides)[number]) =>
+            engine?.code ?? data.engines.map(({ code }) => code).join(' · '),
+        ],
+        [
+          'תצפיות לקוד מנוע במרשם הפעיל',
+          ({ engine }: (typeof sides)[number]) =>
+            engine ? number.format(engine.observed) : '',
+        ],
+        [
+          'רכבים פעילים בשנתון',
+          ({ data, engine }: (typeof sides)[number]) =>
+            engine ? '' : number.format(data.counts.active),
+        ],
+        [
+          'רכבים לא פעילים בשנתון',
+          ({ data, engine }: (typeof sides)[number]) =>
+            engine ? '' : number.format(data.counts.inactive),
+        ],
+        [
+          'חציון נסועה במדגם השנתון',
+          ({ data, engine }: (typeof sides)[number]) =>
+            !engine && data.mileage
+              ? `${number.format(data.mileage.median)} ק״מ · ${number.format(data.mileage.n)} קריאות · ${data.mileage.date}`
+              : '',
+        ],
+      ] as const;
+      const table = element('table');
+      const header = table.createTHead().insertRow();
+      const field = element('th', 'נתון');
+      field.scope = 'col';
+      header.append(field);
+      for (const { title, href } of sides) {
+        const cell = element('th');
+        cell.scope = 'col';
+        cell.append(link(title, href));
+        header.append(cell);
+      }
+      const body = table.createTBody();
+      const equalRows: HTMLTableRowElement[] = [];
+      for (const [label, get] of rows) {
+        const row = body.insertRow();
+        const key = element('th', label);
+        key.scope = 'row';
+        row.append(key);
+        const values = sides.map(get);
+        if (values[0] === values[1]) equalRows.push(row);
+        if (values.every(Boolean) && values[0] !== values[1])
+          row.classList.add('different');
+        for (const value of values) row.insertCell().textContent = value || '—';
+      }
+      const exportControl = button('הורדת השוואה כ־CSV', () => {
+        const url = URL.createObjectURL(
+          csvBlob([
+            ['נתון', ...sides.map(({ title }) => title)],
+            ...rows.map(([label, read]) => [label, ...sides.map(read)]),
+          ]),
+        );
+        const download = link('', url);
+        download.download = 'myoto-model-comparison.csv';
+        download.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      });
+      const scroll = element('div', undefined, 'table-scroll');
+      scroll.setAttribute('role', 'region');
+      scroll.setAttribute('aria-label', 'טבלת השוואת דגמים');
+      scroll.tabIndex = 0;
+      scroll.append(table);
+      const differences = element('input');
+      differences.type = 'checkbox';
+      const control = element('label');
+      control.append(differences, ' הצגת הבדלים בלבד');
+      differences.addEventListener('change', () => {
+        for (const row of equalRows) row.hidden = differences.checked;
+      });
+      result.replaceChildren(
+        element('h2', 'תוצאות השוואה'),
+        control,
+        scroll,
+        exportControl,
+      );
+      if (sides.some(({ engine }) => engine))
+        result.append(
+          element(
+            'p',
+            'נתוני מפרט בקוד מנוע מוצגים כשהרישומים מאפשרים שיוך לקוד. חציון הנסועה זמין ברמת השנתון.',
+            'muted',
+          ),
+        );
+      const url = new URL(location.href);
+      groups.forEach((group, index) =>
+        url.searchParams.set(
+          index ? 'b' : 'a',
+          group.model.value + '/' + group.year.value,
+        ),
+      );
+      groups.forEach((group, index) => {
+        const key = index ? 'engine-b' : 'engine-a';
+        if (group.engine.value) url.searchParams.set(key, group.engine.value);
+        else url.searchParams.delete(key);
+      });
+      history.replaceState(history.state, '', url);
+      result.hidden = false;
+      status.textContent = '';
+    } catch {
+      if (current === generation)
+        status.textContent = 'טעינת נתוני ההשוואה לא הצליחה. אפשר לנסות שוב.';
+    }
+  }
+
+  void (async () => {
+    status.textContent = 'טוען קטלוג דגמים…';
+    try {
+      index = await json<CatalogSearchItem[]>('models/search-index.json');
+      const makes = [
+        ...new Map(index.map(({ path, make }) => [path.split('/')[0], make])),
+      ].sort((a, b) => a[1].localeCompare(b[1], 'he'));
+      const params = new URLSearchParams(location.search);
+      const engineLoads: Promise<void>[] = [];
+      for (const [index, group] of groups.entries()) {
+        const parts = (params.get(index ? 'b' : 'a') ?? '').split('/');
+        fill(group.make, makes, parts[0]);
+        models(group, parts.slice(0, 2).join('/'), parts[2]);
+        engineLoads.push(
+          loadEngines(
+            group,
+            params.get(index ? 'engine-b' : 'engine-a') ?? undefined,
+          ),
+        );
+        group.make.addEventListener('change', () => {
+          invalidate();
+          models(group);
+          void loadEngines(group);
+        });
+        group.model.addEventListener('change', () => {
+          invalidate();
+          fillYears(group);
+          void loadEngines(group);
+        });
+        group.year.addEventListener('change', () => {
+          invalidate();
+          void loadEngines(group);
+        });
+        group.engine.addEventListener('change', invalidate);
+      }
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        void compare();
+      });
+      await Promise.all(engineLoads);
+      form.hidden = false;
+      status.textContent = '';
+      if (
+        groups.every(
+          (group, index) =>
+            params.get(index ? 'b' : 'a') ===
+            group.model.value + '/' + group.year.value,
+        )
+      )
+        void compare();
+    } catch {
+      status.textContent = 'קטלוג הדגמים אינו זמין כרגע.';
+    }
+  })();
+</script>
+
+<style>
+  fieldset {
+    min-inline-size: 0;
+  }
+  select {
+    inline-size: 100%;
+    max-inline-size: 100%;
+  }
+</style>

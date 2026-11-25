@@ -1,12 +1,18 @@
 import { VehicleEngine } from '../data/engine';
-import { displayValue } from '../domain/format';
+import { normalizeEngineCode } from '../domain/engine-code';
+import { parseTireSize } from '../domain/tires';
 import { formatPlate, parsePlate, type SearchDomain } from '../domain/plate';
 import type { Report, SourceReplies } from '../domain/report';
+import {
+  estimatedLicensingFee,
+  vehicleViewModel,
+} from '../presentation/vehicle-view-model';
+import { csvBlob } from './csv';
 import { button, element, link } from './dom';
 import { renderReport, sourceDetails, vehicleName } from './report';
 import { renderRecall } from './recall-panel';
 import { mark } from './icons';
-import { failedSources, logFailure, logLookup } from './diagnostics';
+import { diagnosticPanel, logFailure, logLookup } from './diagnostics';
 
 const form = document.querySelector<HTMLFormElement>('#vehicle-form')!;
 const input = document.querySelector<HTMLInputElement>('#plate')!;
@@ -18,6 +24,7 @@ const engine = new VehicleEngine();
 const lookup = form.closest('.lookup-hero')!;
 let controller: AbortController | undefined;
 let displayedQuery: string | undefined;
+let diagnostics: HTMLElement | undefined;
 
 type Saved = { plate: string; domain: SearchDomain };
 type SearchMode = SearchDomain | 'auto';
@@ -98,20 +105,48 @@ function renderSaved() {
     const list = element('ul', undefined, 'saved-items');
     for (const item of items) {
       const row = element('li');
-      row.append(
-        link(
-          item.domain === 'equipment'
-            ? `צמ״ה ${item.plate}`
-            : formatPlate(item.plate),
-          address(item).href,
-        ),
-      );
+      const label =
+        item.domain === 'equipment'
+          ? `צמ״ה ${item.plate}`
+          : formatPlate(item.plate);
+      const remove = button('×', () => {
+        if (
+          !write(
+            key,
+            read(key).filter((entry) => !same(entry, item)),
+          )
+        ) {
+          message.classList.remove('visually-hidden');
+          message.textContent = 'הדפדפן חסם את עדכון הרשימה המקומית.';
+          return;
+        }
+        renderSaved();
+      });
+      remove.className = 'saved-remove';
+      remove.setAttribute('aria-label', `הסרת ${label} מרשימת ${heading}`);
+      row.append(link(label, address(item).href), remove);
       list.append(row);
     }
     section.append(title, list);
     saved.append(section);
   }
   saved.hidden = !saved.children.length;
+  refreshFavorite?.();
+}
+
+let refreshFavorite: (() => void) | undefined;
+
+function resetReportActions() {
+  actions.replaceChildren();
+  refreshFavorite = undefined;
+  for (const id of ['footer-vehicle-cost', 'footer-tire-size']) {
+    const anchor = document.querySelector<HTMLAnchorElement>('#' + id);
+    if (anchor) {
+      const url = new URL(anchor.href);
+      url.search = '';
+      anchor.href = url.href;
+    }
+  }
 }
 
 function download(filename: string, content: Blob) {
@@ -127,6 +162,8 @@ function download(filename: string, content: Blob) {
 
 function renderActions(report: Report) {
   const url = address(report);
+  url.pathname = import.meta.env.BASE_URL;
+  url.searchParams.delete('debug');
   const signal = controller?.signal;
   const actionFeedback = (content: string) => {
     if (!signal?.aborted && actions.isConnected) {
@@ -134,14 +171,6 @@ function renderActions(report: Report) {
       message.textContent = content;
     }
   };
-  const summary = [
-    vehicleName(report),
-    report.plate,
-    ...['tokef_dt', 'baalut', 'kilometer_test_aharon'].flatMap((key) => {
-      const field = report.fields[key];
-      return field ? [displayValue(key, field.chosen.value)] : [];
-    }),
-  ].join(' · ');
   const copy = async (value: string, success: string) => {
     if (signal?.aborted) return;
     try {
@@ -154,8 +183,7 @@ function renderActions(report: Report) {
   };
   const action = (label: string, icon: string, click: () => void) =>
     mark(button(label, click), icon);
-  const print = (compact = false) => {
-    document.body.classList.toggle('compact-print', compact);
+  const print = () => {
     try {
       window.print();
     } catch (error) {
@@ -163,8 +191,6 @@ function renderActions(report: Report) {
       actionFeedback(
         'לא ניתן לפתוח את חלון ההדפסה. אפשר לפתוח את הדוח בחלון נפרד ולנסות שוב.',
       );
-    } finally {
-      document.body.classList.remove('compact-print');
     }
   };
   const exportJson = (filename: string, contents: unknown) => {
@@ -190,24 +216,27 @@ function renderActions(report: Report) {
         });
     } else void copy(url.href, 'הקישור הועתק.');
   });
-  const save = action('מועדף', 'star', () => {
+  const save = action('', 'star', () => {
     const items = read('myoto-favorites');
     const present = items.some((item) => same(item, report));
     const next = present
       ? items.filter((item) => !same(item, report))
       : [{ plate: report.plate, domain: report.domain }, ...items];
     if (write('myoto-favorites', next)) {
-      save.setAttribute('aria-pressed', String(!present));
       renderSaved();
     } else
       actionFeedback(
         'לא ניתן לשנות את המועדפים כי הדפדפן חסם את האחסון המקומי.',
       );
   });
-  save.setAttribute(
-    'aria-pressed',
-    String(read('myoto-favorites').some((item) => same(item, report))),
-  );
+  const favoriteLabel = element('span');
+  save.append(favoriteLabel);
+  refreshFavorite = () => {
+    const present = read('myoto-favorites').some((item) => same(item, report));
+    favoriteLabel.textContent = present ? 'הסר ממועדפים' : 'הוסף למועדפים';
+    save.dataset.favorite = String(present);
+  };
+  refreshFavorite();
   const more = element('details', undefined, 'report-more');
   const menuLabel = element('span', 'עוד פעולות');
   const trigger = mark(element('summary'), 'chevron-down');
@@ -257,12 +286,40 @@ function renderActions(report: Report) {
     })();
   });
   menu.append(
-    save,
-    action('העתקת תקציר', 'copy', () => {
-      void copy(summary, 'תקציר הדוח הועתק.');
-    }),
-    action('דוח קומפקטי', 'printer', () => print(true)),
     imageExport,
+    action('CSV', 'download', () => {
+      const view = vehicleViewModel(report);
+      const rows = [
+        ['חלק בדוח', 'שדה', 'ערך', 'מקור'],
+        ['זיהוי', 'מספר רישוי', report.plate, ''],
+        ['זיהוי', 'רכב', view.title, ''],
+        ...(view.status ? [['רישוי', 'מצב רישוי', view.status, '']] : []),
+      ];
+      for (const section of [...view.sections, ...view.additional]) {
+        for (const row of section.groups.flat()) {
+          rows.push([
+            section.title,
+            row.label,
+            row.text,
+            row.scope === 'model' ? 'מפרט דגם' : '',
+          ]);
+          for (const alternative of row.differences ?? [])
+            rows.push([
+              section.title,
+              row.label,
+              alternative.text,
+              alternative.source,
+            ]);
+        }
+      }
+      for (const row of view.highlights)
+        rows.push(['פרטים עיקריים', row.label, row.text, row.help ?? '']);
+      for (const table of view.tables) {
+        rows.push([], [table.title, ...table.labels]);
+        for (const row of table.rows) rows.push(['', ...row]);
+      }
+      download(`car-${report.plate}.csv`, csvBlob(rows));
+    }),
     action('JSON', 'file-json', () => {
       const { sources, ...data } = report;
       const sourceStatus = Object.fromEntries(
@@ -281,10 +338,83 @@ function renderActions(report: Report) {
       exportJson(`car-${report.plate}-sources.json`, report.sources),
     ),
   );
+  const fuel = report.fields.sug_delek_nm ?? report.fields.delek_nm;
+  const electric = Boolean(
+    fuel && !fuel.conflicting && String(fuel.chosen.value).trim() === 'חשמל',
+  );
+  if (report.domain === 'registration') {
+    const cost = new URL(
+      import.meta.env.BASE_URL + 'vehicle-cost/',
+      location.origin,
+    );
+    const fee = estimatedLicensingFee(report);
+    if (fee !== undefined) cost.searchParams.set('licensing', String(fee));
+    if (electric) cost.searchParams.set('unit', 'electric');
+    const costLink = document.querySelector<HTMLAnchorElement>(
+      '#footer-vehicle-cost',
+    );
+    if (costLink) costLink.href = cost.href;
+  }
+  if (report.domain === 'registration' && electric)
+    menu.append(
+      mark(
+        link(
+          'מחשבון טעינת רכב חשמלי',
+          import.meta.env.BASE_URL + 'charging-cost/',
+        ),
+        'wallet',
+      ),
+    );
+  if (report.identity === 'private_cars_1') {
+    const year = report.fields.shnat_yitzur;
+    const importers = new URL(
+      import.meta.env.BASE_URL + 'importers/',
+      location.origin,
+    );
+    if (year && !year.conflicting && /^\d{4}$/.test(String(year.chosen.value)))
+      importers.searchParams.set('year', String(year.chosen.value));
+    const model = report.fields.kinuy_mishari;
+    if (model && !model.conflicting && typeof model.chosen.value === 'string')
+      importers.searchParams.set('query', model.chosen.value.slice(0, 100));
+    menu.append(mark(link('מחירוני רכב חדש', importers.href), 'wallet'));
+  }
+  const frontTire = report.fields.zmig_kidmi;
+  if (report.domain === 'registration') {
+    const tires = new URL(
+      import.meta.env.BASE_URL + 'tire-size/',
+      location.origin,
+    );
+    const size = String(frontTire?.chosen.value ?? '');
+    if (frontTire && !frontTire.conflicting && parseTireSize(size)) {
+      tires.searchParams.set('size', size);
+      const catalog =
+        import.meta.env.BASE_URL + 'tires/?size=' + encodeURIComponent(size);
+      menu.append(mark(link('דגמים לפי מידת צמיג', catalog), 'circle-gauge'));
+    }
+    const tiresLink =
+      document.querySelector<HTMLAnchorElement>('#footer-tire-size');
+    if (tiresLink) tiresLink.href = tires.href;
+  }
+  const engine = report.fields.degem_manoa;
+  const code =
+    engine && !engine.conflicting
+      ? normalizeEngineCode(engine.chosen.value)
+      : undefined;
+  if (code) {
+    const directory = new URL(
+      import.meta.env.BASE_URL + 'engines/',
+      location.origin,
+    );
+    directory.searchParams.set('code', code);
+    menu.append(
+      mark(link('חיפוש קוד המנוע בקטלוג', directory.href), 'settings'),
+    );
+  }
   more.append(menu);
   actions.replaceChildren(
     share,
     action('הדפסה / PDF', 'printer', () => print()),
+    save,
     more,
   );
   if (report.domain === 'registration') {
@@ -313,7 +443,16 @@ function showResult(report: Report, checked?: SourceReplies) {
       .then(({ mileageComparison }) => {
         if (signal.aborted || !article?.isConnected) return;
         const comparison = mileageComparison(report);
-        if (comparison) article?.append(comparison);
+        if (comparison) {
+          comparison.id = 'mileage-cohort';
+          article.append(comparison);
+          const checks = article.querySelector('#buyer-checks ul');
+          if (checks) {
+            const item = element('li');
+            item.append(link('השוואת נסועה למדגם השנתון', '#mileage-cohort'));
+            checks.append(item);
+          }
+        }
       })
       .catch((error) => {
         if (!signal.aborted) logFailure('mileage-comparison', error);
@@ -394,6 +533,8 @@ function resultChooser(matches: Report[], waiting = false) {
 
 async function search(plate: string, domain: SearchMode, navigate: boolean) {
   controller?.abort();
+  diagnostics?.remove();
+  diagnostics = undefined;
   const request = new AbortController();
   controller = request;
   input.value = domain === 'equipment' ? plate : formatPlate(plate);
@@ -402,7 +543,7 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
   lookup.classList.add('lookup-active');
   message.classList.remove('visually-hidden');
   message.textContent = 'בודק במאגרי משרד התחבורה…';
-  actions.replaceChildren();
+  resetReportActions();
   input.removeAttribute('aria-invalid');
   form.classList.add('is-searching');
   const skeleton = element('div', undefined, 'panel skeleton');
@@ -443,6 +584,8 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
     ];
     if (request.signal.aborted) return;
     logLookup('search', reports);
+    diagnostics = diagnosticPanel('search', reports);
+    if (diagnostics) output.after(diagnostics);
     const registration = reports.find(
       (report) => report.domain === 'registration',
     );
@@ -485,28 +628,16 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
         element(
           'p',
           unavailable
-            ? 'מאגרי הרישוי והצמ״ה לא החזירו תשובה מלאה. אפשר לנסות שוב.'
+            ? 'כמה ממאגרי משרד התחבורה לא השיבו. פירוט במקורות המידע.'
             : incomplete
               ? discovery.checks.registration === 'partial'
                 ? 'בצמ״ה לא נמצאה התאמה. חלק ממאגרי הרישוי לא החזירו תשובה מלאה.'
                 : 'ברישוי רגיל לא נמצאה התאמה. מאגר הצמ״ה לא החזיר תשובה מלאה.'
-              : 'המספר לא נמצא במאגרי הרישוי והצמ״ה שנבדקו. כדאי לבדוק את הספרות ולהזין שוב.',
+              : recallUnavailable
+                ? 'לא נמצאה התאמה ברישוי ובצמ״ה. בדיקת המקורות חלקית.'
+                : 'המספר לא נמצא במאגרי הרישוי והצמ״ה שנבדקו. כדאי לבדוק את הספרות ולהזין שוב.',
         ),
       );
-      if (recallUnavailable)
-        summary.append(element('p', 'בדיקת הריקול לפי מספר הרישוי לא הושלמה.'));
-      if (incomplete) {
-        const failures = failedSources(reports);
-        const first = failures[0];
-        if (first)
-          summary.append(
-            element(
-              'p',
-              `${first.name} · ${first.text}${failures.length > 1 ? ` · ועוד ${failures.length - 1} במקורות המידע` : ''}`,
-              'muted',
-            ),
-          );
-      }
       if (incomplete || recallUnavailable)
         summary.append(
           button('נסה שוב', () => {
@@ -541,9 +672,18 @@ async function search(plate: string, domain: SearchMode, navigate: boolean) {
 }
 
 const fromUrl = () => {
+  const base = import.meta.env.BASE_URL;
   if (location.search === displayedQuery) return;
   displayedQuery = location.search;
   const parameters = new URLSearchParams(location.search);
+  if (location.pathname === base && parameters.get('embed') === '1') {
+    const target = new URL(base + 'embed/', location.origin);
+    parameters.delete('embed');
+    target.search = parameters.toString();
+    target.hash = location.hash;
+    location.replace(target);
+    return;
+  }
   const plate = parsePlate(parameters.get('search') ?? '');
   const type = parameters.get('type');
   if (plate)
@@ -554,9 +694,10 @@ const fromUrl = () => {
     );
   else {
     controller?.abort();
+    diagnostics?.remove();
     output.removeAttribute('aria-busy');
     output.replaceChildren();
-    actions.replaceChildren();
+    resetReportActions();
     message.textContent = '';
     input.value = '';
     form.classList.remove('is-searching');

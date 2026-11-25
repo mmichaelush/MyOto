@@ -14,6 +14,7 @@ export type Reply = {
   rows: Row[];
   fetchedAt: string;
   durationMs: number;
+  cached?: true;
   issue?: Failure;
   httpStatus?: number;
   upstreamUpdatedAt?: string;

@@ -263,10 +263,11 @@ h3 {
   font-size: 0.9rem;
   font-weight: 700;
 }
-.status-listed {
+.status-valid {
   background: #e0f3ea;
   color: #15533b;
 }
+.status-expired,
 .status-cancelled,
 .status-conflicting,
 .status-inactive {
@@ -755,8 +756,5 @@ meter {
   .plate,
   th {
     print-color-adjust: exact;
-  }
-  .compact-print .vehicle-report > :not(.report-summary, .notice) {
-    display: none;
   }
 }

@@ -107,3 +107,38 @@ test('model overview shows fleet statistics and samples ownership for the select
   await expect(page.getByText(/פרטי.*75%/)).toBeVisible();
   await expect(page.getByText(/השכרה.*25%/)).toBeVisible();
 });
+test('filters models by powertrain from a shared URL', async ({ page }) => {
+  await page.goto(
+    '/MyOto/models/?make=toyota&year=2021&propulsion=' +
+      encodeURIComponent('היברידי רגיל'),
+  );
+  await expect(page.getByLabel('טכנולוגיית הנעה')).toHaveValue('היברידי רגיל');
+  const results = page.getByRole('region', { name: 'תוצאות חיפוש' });
+  await expect(
+    results.locator('a[href="/MyOto/models/toyota/corolla/2021/"]'),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'חזרה לרשימת יצרנים' }).click();
+  await expect(page.getByLabel('טכנולוגיית הנעה')).toHaveValue('');
+  await expect(results).toBeHidden();
+});
+test('combines country of origin, fee group and equipment level in the live catalog', async ({
+  page,
+}) => {
+  const query = new URLSearchParams({
+    make: 'toyota',
+    q: 'corolla',
+    year: '2021',
+    country: 'טורקיה',
+    feeGroup: '3',
+    safety: '1',
+  });
+  await page.goto('/MyOto/models/?' + query);
+  await expect(page.getByLabel('ארץ תוצר במפרט')).toHaveValue('טורקיה');
+  await expect(page.getByLabel('קבוצת אגרת רישוי')).toHaveValue('3');
+  await expect(page.getByLabel('רמת אבזור בטיחותי')).toHaveValue('1');
+  await expect(
+    page
+      .getByRole('region', { name: 'תוצאות חיפוש' })
+      .locator('a[href="/MyOto/models/toyota/corolla/2021/"]'),
+  ).toBeVisible();
+});

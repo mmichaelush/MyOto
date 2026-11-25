@@ -10,7 +10,7 @@ const output = new URL('../src/data/catalog.json', import.meta.url);
 const cache = new URL('../.astro/catalog-cache/', import.meta.url);
 const endpoint = 'https://data.gov.il/api/3/action/';
 const limit = 5000;
-const catalogSchema = 2;
+const catalogSchema = 3;
 const keyFields = ['sug_degem', 'tozeret_cd', 'degem_cd', 'shnat_yitzur'];
 const projections = {
   modelCounts: [
@@ -36,6 +36,8 @@ const projections = {
     'kosher_grira_bli_blamim',
     'kvutzat_zihum',
     'ramat_eivzur_betihuty',
+    'kvuzat_agra_cd',
+    'tozeret_eretz_nm',
   ],
 };
 // Aliases are for navigation. Both discovery and counts come from the registry.
@@ -205,6 +207,8 @@ for await (const row of scan('modelDetails')) {
       towUnbraked: row.kosher_grira_bli_blamim,
       pollution: row.kvutzat_zihum,
       safety: row.ramat_eivzur_betihuty,
+      feeGroup: row.kvuzat_agra_cd,
+      country: clean(row.tozeret_eretz_nm),
     }).filter(
       ([, value]) => value !== undefined && value !== null && value !== '',
     ),

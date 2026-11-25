@@ -230,7 +230,7 @@ for (const [make, slug, year] of cohorts) {
     ownershipByTrim: ownershipByTrim(sample),
     fuel: distribution(sample, 'sug_delek_nm'),
     trims: distribution(sample, 'ramat_gimur'),
-    mileage: mileageSummary(mileage),
+    mileage: mileageSummary(mileage, 20, true),
   };
   refreshed++;
 }

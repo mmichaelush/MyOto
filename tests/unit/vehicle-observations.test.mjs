@@ -1,5 +1,8 @@
 import { expect, test } from 'vitest';
-import { compareObservedEngines } from '../../scripts/diff-vehicle-observations.mjs';
+import {
+  compareObservedEngines,
+  summarizeObservedEngineChanges,
+} from '../../scripts/diff-vehicle-observations.mjs';
 
 const row = {
   vin: 'JTNFAKE1123456789',
@@ -57,4 +60,33 @@ test('ignores a plate claimed by two different VINs in one observation month', (
       ),
     ),
   ).toEqual([]);
+});
+
+test('exports an identity-free interval summary and suppresses small results', () => {
+  expect(
+    summarizeObservedEngineChanges(old, month({ ...row, engine: 'DEF222' })),
+  ).toMatchObject({ comparable: 1, changed: null, observedRate: null });
+  const rows = Array.from({ length: 24 }, (_, index) => ({
+    ...row,
+    vin: row.vin.slice(0, -2) + String(index).padStart(2, '0'),
+    plate: String(11234000 + index),
+  }));
+  const next = rows.map((entry, index) =>
+    index < 6 ? { ...entry, engine: 'DEF222' } : entry,
+  );
+  const result = summarizeObservedEngineChanges(
+    { ...old, rows },
+    month(...next),
+  );
+  expect(result).toEqual({
+    schema: 1,
+    from: '2026-09',
+    to: '2026-11',
+    earlierVerified: 24,
+    laterVerified: 24,
+    comparable: 24,
+    changed: 6,
+    observedRate: 0.25,
+  });
+  expect(JSON.stringify(result)).not.toMatch(/DEF222|11234000|JTNFAKE/);
 });
