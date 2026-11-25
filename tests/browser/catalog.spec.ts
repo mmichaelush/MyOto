@@ -70,7 +70,7 @@ test('model overview shows fleet statistics and samples ownership for the select
     page.getByRole('heading', { name: 'התפלגות כלי הרכב הפעילים' }),
   ).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'סוגי בעלות רשומה' }),
+    page.getByRole('heading', { name: 'סוגי בעלות נוכחית' }),
   ).toBeVisible();
   const select = page.getByLabel('שנתון למדגם');
   await select.selectOption('2010');

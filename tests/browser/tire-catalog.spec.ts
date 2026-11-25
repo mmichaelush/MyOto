@@ -30,7 +30,10 @@ test('finds a recorded tire size and links to its models and calculator', async 
   expect((await download).suggestedFilename()).toBe(
     'myoto-tires-205-55R16.csv',
   );
-  await page.getByRole('link', { name: 'מחשבון מידות צמיגים' }).click();
+  await page
+    .getByRole('main')
+    .getByRole('link', { name: 'מחשבון מידות צמיגים' })
+    .click();
   await expect(page.getByLabel('מידה ברישיון או מידה קיימת')).toHaveValue(
     '205/55R16',
   );
