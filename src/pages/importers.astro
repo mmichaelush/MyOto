@@ -1,0 +1,199 @@
+﻿---
+import Site from '../layouts/Site.astro';
+import { resources } from '../data/sources';
+import '../styles/catalog.css';
+---
+
+<Site title="יבואנים ומחירוני רכב חדש">
+  <section class="panel catalog-heading">
+    <h1>יבואנים ומחירוני רכב חדש</h1>
+    <p>המחירים הם מחירי רכב חדש שדווחו בידי היבואנים לשנת הייצור שנבחרה.</p>
+    <form id="importer-search" hidden>
+      <div class="grid-data">
+        <label class="control">
+          שנת ייצור{' '}
+          <input
+            class="text-input"
+            type="number"
+            name="year"
+            min="1900"
+            max="2100"
+            required
+          />
+        </label>
+        <label class="control">
+          יבואן, תוצר או דגם{' '}
+          <input class="text-input" name="query" maxlength="100" />
+        </label>
+      </div>
+      <button>חיפוש במחירון</button>
+    </form>
+    <p id="importer-status" role="status"></p>
+    <a href={resources.importers.url}>מאגר משרד התחבורה</a>
+  </section>
+  <section id="importer-results" class="panel catalog-data" hidden>
+    <h2>מחירים שדווחו</h2>
+    <div
+      class="table-scroll"
+      role="region"
+      aria-label="תוצאות מחירון יבואנים"
+      tabindex="0"
+    >
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">יבואן</th>
+            <th scope="col">תוצר ודגם</th>
+            <th scope="col">מחיר רכב חדש</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <button id="importer-export" type="button">
+      הורדת תוצאות כ־CSV
+    </button>
+  </section>
+</Site>
+
+<script>
+  import { resources } from '../data/sources';
+  import { csvBlob } from '../ui/csv';
+  import { directoryKey, readDirectory } from '../ui/public-directory';
+
+  const fields = [
+    'shem_yevuan',
+    'tozeret_nm',
+    'kinuy_mishari',
+    'degem_nm',
+    'mehir',
+  ] as const;
+  type Result = [importer: string, model: string, price: number];
+  const form = document.querySelector<HTMLFormElement>('#importer-search')!;
+  const yearInput = form.elements.namedItem('year') as HTMLInputElement;
+  const status = document.querySelector<HTMLElement>('#importer-status')!;
+  const section = document.querySelector<HTMLElement>('#importer-results')!;
+  const table = section.querySelector('tbody')!;
+  const exportButton =
+    document.querySelector<HTMLButtonElement>('#importer-export')!;
+  const money = new Intl.NumberFormat('he-IL', {
+    style: 'currency',
+    currency: 'ILS',
+    maximumFractionDigits: 2,
+  });
+  let results: Result[] = [];
+  let resultsYear = 0;
+  let active: AbortController | undefined;
+  let cached:
+    | {
+        year: number;
+        items: Awaited<
+          ReturnType<typeof readDirectory<(typeof fields)[number]>>
+        >;
+      }
+    | undefined;
+  const text = (value: unknown) =>
+    typeof value === 'string' ? value.trim() : '';
+
+  exportButton.addEventListener('click', () => {
+    const url = URL.createObjectURL(
+      csvBlob([
+        ['שנת ייצור', 'יבואן', 'תוצר ודגם', 'מחיר בש״ח'],
+        ...results.map((row) => [resultsYear, ...row]),
+      ]),
+    );
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `myoto-importer-prices-${resultsYear}.csv`;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    active?.abort();
+    const request = new AbortController();
+    active = request;
+    const data = new FormData(form);
+    const year = Number(data.get('year'));
+    const query = directoryKey(String(data.get('query') ?? '')).toLowerCase();
+    section.hidden = true;
+    status.textContent = 'מחפש במאגר המחירונים…';
+    try {
+      const items =
+        cached?.year === year
+          ? cached.items
+          : await readDirectory(
+              resources.importers.id,
+              fields,
+              request.signal,
+              { shnat_yitzur: year },
+            );
+      if (request.signal.aborted) return;
+      cached = { year, items };
+      const seen = new Set<string>();
+      results = items
+        .flatMap((row): Result[] => {
+          if (
+            !row ||
+            typeof row.mehir !== 'number' ||
+            !Number.isFinite(row.mehir) ||
+            row.mehir <= 0
+          )
+            return [];
+          const importer = text(row.shem_yevuan);
+          const names = [
+            ...new Set(
+              [
+                text(row.tozeret_nm),
+                text(row.kinuy_mishari),
+                text(row.degem_nm),
+              ].filter(Boolean),
+            ),
+          ];
+          if (
+            !importer ||
+            !names.length ||
+            !directoryKey([importer, ...names].join(' '))
+              .toLowerCase()
+              .includes(query)
+          )
+            return [];
+          const model = names.join(' · ');
+          const key = JSON.stringify([importer, model, row.mehir]);
+          if (seen.has(key)) return [];
+          seen.add(key);
+          return [[importer, model, row.mehir]];
+        })
+        .sort(
+          (a, b) =>
+            a[0].localeCompare(b[0], 'he') ||
+            a[1].localeCompare(b[1], 'he') ||
+            a[2] - b[2],
+        );
+      resultsYear = year;
+      table.replaceChildren();
+      for (const [importer, model, price] of results.slice(0, 100)) {
+        const row = table.insertRow();
+        for (const value of [importer, model, money.format(price)])
+          row.insertCell().textContent = value;
+      }
+      section.hidden = !results.length;
+      status.textContent =
+        results.length > 100
+          ? `נמצאו ${results.length} מחירים. מוצגות 100 תוצאות, והייצוא כולל את כל התוצאות.`
+          : results.length
+            ? `נמצאו ${results.length} מחירים.`
+            : 'לא נמצאו מחירים תואמים.';
+    } catch {
+      if (!request.signal.aborted)
+        status.textContent = 'מאגר המחירונים אינו זמין כרגע.';
+    }
+  });
+  const params = new URLSearchParams(location.search);
+  const year = params.get('year');
+  const queryInput = form.elements.namedItem('query') as HTMLInputElement;
+  queryInput.value = (params.get('query') ?? '').slice(0, queryInput.maxLength);
+  if (year && /^\d{4}$/.test(year)) yearInput.value = year;
+  form.hidden = false;
+</script>

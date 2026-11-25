@@ -1,0 +1,112 @@
+﻿---
+import Site from '../layouts/Site.astro';
+import { buyerChecks } from '../domain/buyer-checks';
+import '../styles/catalog.css';
+---
+
+<Site title="בדיקות לפני קניית רכב משומש">
+  <section class="panel catalog-heading">
+    <h1>בדיקות לפני קניית רכב משומש</h1>
+    <p>
+      בדקו את הרכב, את המסמכים ואת מגבלות ההעברה לפני העסקה. אפשר לסמן מה כבר
+      בדקתם בעמוד זה.
+    </p>
+    <a href={import.meta.env.BASE_URL}>לבדיקת רכב לפי מספר רישוי</a> ·
+    <a href={import.meta.env.BASE_URL + 'glossary/'}>מילון מונחים לרכב</a> ·
+    <a href={import.meta.env.BASE_URL + 'garages/'}>
+      איתור מוסכים ומכוני רישוי
+    </a>{' '}
+    · <a href={import.meta.env.BASE_URL + 'dealers/'}>איתור סוחרי רכב מורשים</a>{' '}
+    ·<a href={import.meta.env.BASE_URL + 'recalls/'}>קריאות שירות לפי דגם</a> ·
+    <a href={import.meta.env.BASE_URL + 'importers/'}>
+      יבואנים ומחירוני רכב חדש
+    </a>
+  </section>
+  <section class="panel catalog-data">
+    <h2>רשימת בדיקות</h2>
+    <div id="checklist-actions" hidden>
+      <p id="checklist-progress" role="status"></p>
+      <button id="checklist-print" type="button">
+        הדפסת רשימת הבדיקות
+      </button>
+      <button id="checklist-reset" type="button" class="secondary">
+        ניקוי הסימונים
+      </button>
+    </div>
+    <ul class="checklist">
+      {buyerChecks.map((check) => (
+        <li>
+          <label>
+            <input type="checkbox" /> <strong>{check.title}</strong>
+          </label>
+          <p>{check.text}</p>
+          {'link' in check && <a href={check.link.url}>{check.link.label}</a>}
+        </li>
+      ))}
+    </ul>
+  </section>
+</Site>
+
+<script>
+  const actions = document.querySelector<HTMLElement>('#checklist-actions')!;
+  const checklist = document.querySelector<HTMLUListElement>('.checklist')!;
+  const checks = [
+    ...checklist.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
+  ];
+  const status = document.querySelector<HTMLElement>('#checklist-progress')!;
+  const reset = document.querySelector<HTMLButtonElement>('#checklist-reset')!;
+  function update() {
+    const complete = checks.filter((check) => check.checked).length;
+    status.textContent = `${complete} מתוך ${checks.length} בדיקות סומנו`;
+    reset.disabled = complete === 0;
+  }
+  checklist.addEventListener('change', update);
+  reset.addEventListener('click', () => {
+    for (const check of checks) check.checked = false;
+    checks[0]?.focus();
+    update();
+  });
+  document
+    .querySelector('#checklist-print')!
+    .addEventListener('click', () => window.print());
+  update();
+  actions.hidden = false;
+</script>
+
+<style>
+  #checklist-actions {
+    margin-block-end: 1rem;
+  }
+  @media print {
+    #checklist-actions button {
+      display: none;
+    }
+    .checklist li {
+      break-inside: avoid;
+    }
+  }
+  .checklist {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 1rem;
+  }
+  .checklist li + li {
+    border-block-start: 1px solid var(--line);
+    padding-block-start: 1rem;
+  }
+  .checklist label {
+    min-block-size: 44px;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    cursor: pointer;
+  }
+  .checklist input {
+    inline-size: 1.1rem;
+    block-size: 1.1rem;
+  }
+  .checklist p {
+    margin-block: 0 0.35rem;
+  }
+</style>

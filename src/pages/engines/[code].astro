@@ -1,0 +1,121 @@
+﻿---
+import Site from '../../layouts/Site.astro';
+import EngineSource from '../../components/EngineSource.astro';
+import { resources } from '../../data/sources';
+import { count } from '../../data/catalog';
+import { engineModels, engines } from '../../data/engine-catalog';
+import '../../styles/catalog.css';
+
+export function getStaticPaths() {
+  return engines
+    .filter((engine) => engine.observed > 0)
+    .map((engine) => ({
+      params: { code: engine.id },
+      props: { engine },
+    }));
+}
+const { engine } = Astro.props;
+const { rows, unlinked } = engineModels(engine);
+const base = import.meta.env.BASE_URL;
+---
+
+<Site title={'קוד מנוע ' + engine.code}>
+  <nav class="breadcrumbs" aria-label="מיקום בקטלוג">
+    <a href={base + 'engines/'}>קטלוג קודי מנוע</a>
+  </nav>
+  <section class="panel catalog-heading">
+    <h1>
+      קוד מנוע <bdi>{engine.code}</bdi>
+    </h1>
+    {engine.observed > 0 && (
+      <>
+        <p>{count.format(engine.observed)} תצפיות במרשם הפעיל</p>
+        <EngineSource />
+      </>
+    )}
+  </section>
+  {engine.observed > 0 && (
+    <section class="panel catalog-data">
+      <h2>דגמים ושנתונים שנצפו</h2>
+      {unlinked > 0 && (
+        <p>
+          {count.format(unlinked)} תצפיות חסרות התאמה לקוד דגם בתמונת הקטלוג
+          הנוכחית.
+        </p>
+      )}
+      {rows.length ? (
+        <div
+          class="table-scroll"
+          role="region"
+          aria-label="דגמים המקושרים לקוד"
+          tabindex="0"
+        >
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">יצרן ודגם רכב</th>
+                <th scope="col">שנת ייצור</th>
+                <th scope="col">תצפיות</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr>
+                  <th scope="row">
+                    <a href={base + 'models/' + row.path}>
+                      {row.make} <bdi>{row.model}</bdi>
+                    </a>
+                  </th>
+                  <td>{row.year}</td>
+                  <td>{count.format(row.observed)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p>כרגע אין דגמים מקושרים בתמונת הקטלוג.</p>
+      )}
+    </section>
+  )}
+  {engine.retired.length > 0 && (
+    <section class="panel catalog-data" id="retired-vehicles">
+      <h2>כלי רכב שירדו מהכביש</h2>
+      <p class="muted">
+        {count.format(engine.retiredCount)} רשומות ביטול סופי לקוד המנוע ·{' '}
+        <a href={resources.offRoad_1.url}>מקור</a>
+      </p>
+      <div
+        class="table-scroll"
+        role="region"
+        aria-label="רישומי ירידה מהכביש לפי קוד מנוע"
+        tabindex="0"
+      >
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">שנת ירידה מהכביש</th>
+              <th scope="col">תוצר מנוע</th>
+              <th scope="col">תוצר ודגם רכב</th>
+              <th scope="col">רשומות</th>
+            </tr>
+          </thead>
+          <tbody>
+            {engine.retired.map(
+              ([year, engineMaker, vehicleMaker, model, rows]) => (
+                <tr>
+                  <td>{year}</td>
+                  <td>{engineMaker || '—'}</td>
+                  <td>
+                    {[vehicleMaker, model].filter(Boolean).join(' · ') || '—'}
+                  </td>
+                  <td>{count.format(rows)}</td>
+                </tr>
+              ),
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
+</Site>

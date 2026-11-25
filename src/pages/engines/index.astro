@@ -1,0 +1,177 @@
+﻿---
+import Site from '../../layouts/Site.astro';
+import EngineSource from '../../components/EngineSource.astro';
+import { count } from '../../data/catalog';
+import { engines } from '../../data/engine-catalog';
+import '../../styles/catalog.css';
+const base = import.meta.env.BASE_URL + 'engines/';
+const common = [...engines]
+  .sort((a, b) => b.observed - a.observed)
+  .slice(0, 60);
+---
+
+<Site title="קטלוג קודי מנוע">
+  <section class="panel catalog-heading">
+    <h1>קטלוג קודי מנוע</h1>
+    <p>
+      <a href={import.meta.env.BASE_URL + 'engine-changes/'}>
+        החלפות מנועים וירידה מהכביש
+      </a>
+    </p>
+    <p>
+      {count.format(engines.length)} קודי מנוע. אפשר לפתוח קוד ולראות באילו דגמי
+      רכב ושנתונים הוא תועד.
+    </p>
+    <label class="control" id="engine-search-control" hidden>
+      חיפוש לפי קוד מנוע
+      <input
+        id="engine-search"
+        class="text-input"
+        type="search"
+        dir="ltr"
+        autocomplete="off"
+        maxlength="40"
+        placeholder="G4LA"
+      />
+    </label>
+    <label class="control" id="engine-scope-control" hidden>
+      מקור הרישום
+      <select id="engine-scope">
+        <option value="all">כל הקודים</option>
+        <option value="active">מרשם פעיל</option>
+        <option value="retired">כלי רכב שירדו מהכביש</option>
+      </select>
+    </label>
+    <p id="engine-count" role="status" class="muted"></p>
+    <EngineSource />
+  </section>
+  <section class="panel catalog-directory">
+    <h2>קודי מנוע</h2>
+    <div class="model-grid" id="engine-results">
+      {common.map((engine) => (
+        <a class="model-card" href={base + engine.id + '/'}>
+          <strong>
+            <bdi>{engine.code}</bdi>
+          </strong>
+          <span>{count.format(engine.observed)} תצפיות</span>
+        </a>
+      ))}
+    </div>
+  </section>
+</Site>
+
+<script>
+  import { engineSlug } from '../../domain/engine-code';
+  import { element, link } from '../../ui/dom';
+
+  type Entry = [code: string, active: number, retired: number];
+  const input = document.querySelector<HTMLInputElement>('#engine-search')!;
+  const control = document.querySelector<HTMLElement>(
+    '#engine-search-control',
+  )!;
+  const scope = document.querySelector<HTMLSelectElement>('#engine-scope')!;
+  const scopeControl = document.querySelector<HTMLElement>(
+    '#engine-scope-control',
+  )!;
+  const status = document.querySelector<HTMLElement>('#engine-count')!;
+  const results = document.querySelector<HTMLElement>('#engine-results')!;
+  const initial = [...results.children];
+  const base = import.meta.env.BASE_URL + 'engines/';
+  const count = new Intl.NumberFormat('he-IL');
+  const limit = 60;
+  let request: Promise<Entry[]> | undefined;
+  let version = 0;
+
+  function renderCard([code, active, retired]: Entry) {
+    const destination = active
+      ? engineSlug(code) +
+        '/' +
+        (scope.value === 'retired' ? '#retired-vehicles' : '')
+      : 'history/?code=' + encodeURIComponent(code);
+    const card = link('', base + destination);
+    card.className = 'model-card';
+    const label = element('strong');
+    label.append(element('bdi', code));
+    const summary = [
+      active ? `${count.format(active)} במרשם הפעיל` : '',
+      retired ? `${count.format(retired)} רישומי ביטול` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    card.append(label, element('span', summary));
+    return card;
+  }
+
+  async function filter() {
+    const pending = ++version;
+    const query = input.value.normalize('NFKC').trim().toUpperCase();
+    const selected = scope.value;
+    if (!query && selected === 'all') {
+      results.replaceChildren(...initial);
+      status.textContent = '';
+      return;
+    }
+    status.textContent = 'מחפש קודי מנוע…';
+    request ??= fetch(base + 'search-index.json')
+      .then((response) => {
+        if (!response.ok) throw new Error('Engine index unavailable');
+        return response.json() as Promise<Entry[]>;
+      })
+      .catch((error: unknown) => {
+        request = undefined;
+        throw error;
+      });
+    try {
+      const entries = await request;
+      if (pending !== version) return;
+      const matches = entries.filter(
+        ([code, active, retired]) =>
+          code.includes(query) &&
+          (selected !== 'active' || active > 0) &&
+          (selected !== 'retired' || retired > 0),
+      );
+      matches.sort(
+        (a, b) =>
+          Number(b[0] === query) - Number(a[0] === query) ||
+          Number(b[0].startsWith(query)) - Number(a[0].startsWith(query)) ||
+          (selected === 'retired' ? b[2] - a[2] : b[1] - a[1]),
+      );
+      results.replaceChildren(...matches.slice(0, limit).map(renderCard));
+      status.textContent =
+        matches.length > limit
+          ? `${count.format(matches.length)} קודים תואמים. מוצגים ${limit}.`
+          : matches.length
+            ? `${count.format(matches.length)} קודים תואמים`
+            : selected === 'retired'
+              ? 'לא נמצאו קודים תואמים בארכיוני הירידה מהכביש.'
+              : 'לא נמצא קוד תואם.';
+    } catch {
+      if (pending !== version) return;
+      results.replaceChildren();
+      status.textContent = 'טעינת קודי המנוע נכשלה. אפשר לנסות חיפוש נוסף.';
+    }
+  }
+  input.value = (new URLSearchParams(location.search).get('code') ?? '').slice(
+    0,
+    40,
+  );
+  if (new URLSearchParams(location.search).get('scope') === 'retired')
+    scope.value = 'retired';
+  input.addEventListener('input', () => void filter());
+  scope.addEventListener('change', () => void filter());
+  void filter();
+  control.hidden = false;
+  scopeControl.hidden = false;
+</script>
+
+<style>
+  .control[hidden] {
+    display: none;
+  }
+  .control {
+    max-inline-size: 25rem;
+  }
+  #engine-count:empty {
+    display: none;
+  }
+</style>

@@ -1,0 +1,37 @@
+﻿---
+import Site from '../layouts/Site.astro';
+import '../styles/catalog.css';
+---
+
+<Site title="נתונים שמורים בדפדפן">
+  <section class="panel catalog-heading">
+    <h1>נתונים שמורים בדפדפן</h1>
+    <p>
+      אפשר למחוק את החיפושים האחרונים, המועדפים והעדפות סידור הדוח שנשמרו בדפדפן
+      הזה.
+    </p>
+    <details id="local-reset" hidden>
+      <summary>מחיקת הנתונים המקומיים</summary>
+      <button type="button">מחיקת נתוני MyOto</button>
+    </details>
+    <p id="reset-status" role="status"></p>
+    <a href={import.meta.env.BASE_URL}>חזרה לחיפוש רכב</a>
+  </section>
+</Site>
+
+<script>
+  import { clearLocalVehicleData } from '../ui/local-vehicle-data';
+  const reset = document.querySelector<HTMLDetailsElement>('#local-reset')!;
+  const status = document.querySelector<HTMLElement>('#reset-status')!;
+  reset.querySelector('button')!.addEventListener('click', () => {
+    try {
+      clearLocalVehicleData();
+      reset.open = false;
+      reset.querySelector('summary')?.focus();
+      status.textContent = 'הנתונים המקומיים של MyOto נמחקו.';
+    } catch {
+      status.textContent = 'הדפדפן חסם את השלמת המחיקה.';
+    }
+  });
+  reset.hidden = false;
+</script>

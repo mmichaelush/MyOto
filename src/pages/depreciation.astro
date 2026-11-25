@@ -1,0 +1,112 @@
+﻿---
+import Site from '../layouts/Site.astro';
+import '../styles/catalog.css';
+---
+
+<Site title="מחשבון ירידת ערך משוערת">
+  <section class="panel catalog-heading">
+    <h1>מחשבון ירידת ערך משוערת</h1>
+    <p>
+      הזינו שווי התחלתי ואת שיעור הירידה השנתי שאתם מניחים. החישוב מחיל את
+      השיעור על יתרת השווי בכל שנה.
+    </p>
+    <form id="depreciation" hidden>
+      <div class="grid-data">
+        <label class="control">
+          שווי התחלתי בש״ח{' '}
+          <input
+            class="text-input"
+            type="number"
+            name="price"
+            min="1"
+            max="100000000"
+            step="0.01"
+            required
+          />
+        </label>
+        <label class="control">
+          ירידת ערך שנתית באחוזים{' '}
+          <input
+            class="text-input"
+            type="number"
+            name="rate"
+            min="0"
+            max="100"
+            step="0.1"
+            required
+          />
+        </label>
+        <label class="control">
+          מספר שנים{' '}
+          <input
+            class="text-input"
+            type="number"
+            name="years"
+            min="1"
+            max="30"
+            required
+          />
+        </label>
+      </div>
+      <button>חישוב ירידת ערך</button>
+    </form>
+    <p id="depreciation-status" role="status"></p>
+    <div
+      class="table-scroll"
+      id="depreciation-results"
+      role="region"
+      aria-label="שווי לפי שנה"
+      tabindex="0"
+      hidden
+    >
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">שנה</th>
+            <th scope="col">שווי משוער</th>
+            <th scope="col">ירידה מצטברת</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <a href={import.meta.env.BASE_URL + 'vehicle-cost/'}>מחשבון עלות שנתית</a>
+  </section>
+</Site>
+
+<script>
+  const form = document.querySelector<HTMLFormElement>('#depreciation')!;
+  const status = document.querySelector<HTMLElement>('#depreciation-status')!;
+  const results = document.querySelector<HTMLElement>('#depreciation-results')!;
+  const body = results.querySelector('tbody')!;
+  const money = new Intl.NumberFormat('he-IL', {
+    style: 'currency',
+    currency: 'ILS',
+    maximumFractionDigits: 0,
+  });
+  form.addEventListener('input', () => {
+    results.hidden = true;
+    status.textContent = '';
+  });
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const values = new FormData(form);
+    const price = Number(values.get('price'));
+    const rate = Number(values.get('rate')) / 100;
+    const years = Number(values.get('years'));
+    body.replaceChildren();
+    for (let year = 1; year <= years; year++) {
+      const value = price * (1 - rate) ** year;
+      const row = body.insertRow();
+      for (const text of [
+        String(year),
+        money.format(value),
+        money.format(price - value),
+      ])
+        row.insertCell().textContent = text;
+    }
+    results.hidden = false;
+    status.textContent = 'החישוב הושלם לפי ההנחות שהוזנו.';
+  });
+  form.hidden = false;
+</script>

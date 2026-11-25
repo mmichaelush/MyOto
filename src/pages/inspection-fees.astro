@@ -1,0 +1,121 @@
+﻿---
+import Site from '../layouts/Site.astro';
+import '../styles/catalog.css';
+import { inspectionRates as rates } from '../domain/inspection-fees';
+
+const currency = new Intl.NumberFormat('he-IL', {
+  style: 'currency',
+  currency: 'ILS',
+});
+const source =
+  'https://www.gov.il/BlobFolder/reports/2026-licensing-institute-rates/he/%D7%A7%D7%95%D7%91%D7%A5%20%D7%94%D7%AA%D7%A7%D7%A0%D7%95%D7%AA-12400.pdf2026.pdf';
+---
+
+<Site title="עלות מבחן רישוי במכון">
+  <section class="panel catalog-heading">
+    <h1>עלות מבחן רישוי במכון</h1>
+    <p>
+      תעריפי מבחן ראשון וחוזר מ־1 ביוני 2026. אגרת חידוש הרישיון משולמת בנפרד.
+    </p>
+    <form id="inspection-fees" hidden>
+      <div class="grid-data">
+        <label class="control">
+          סוג רכב
+          <select name="kind" required>
+            <option value="">בחרו סוג רכב</option>
+            {rates.map(([kind, label, ...prices]) => (
+              <option value={kind} data-prices={JSON.stringify(prices)}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label class="control">
+          הנעה
+          <select name="electric">
+            <option value="0">רכב שאינו חשמלי</option>
+            <option value="1">רכב חשמלי</option>
+          </select>
+        </label>
+        <label class="control">
+          סוג מבחן
+          <select name="repeat">
+            <option value="0">מבחן ראשון</option>
+            <option value="1">מבחן חוזר</option>
+          </select>
+        </label>
+      </div>
+      <button type="submit">הצגת מחיר</button>
+    </form>
+    <p id="inspection-price" role="status"></p>
+    <p>
+      <a href={source}>קובץ התקנות 12400, עמ׳ 2187</a>
+    </p>
+  </section>
+  <section class="panel catalog-data">
+    <h2>טבלת תעריפים</h2>
+    <div
+      class="table-scroll"
+      role="region"
+      aria-label="תעריפי מבחני רישוי"
+      tabindex="0"
+    >
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">סוג רכב</th>
+            <th scope="col">ראשון</th>
+            <th scope="col">ראשון חשמלי</th>
+            <th scope="col">חוזר</th>
+            <th scope="col">חוזר חשמלי</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rates.map(([, label, ...prices]) => (
+            <tr>
+              <th scope="row">{label}</th>
+              {prices.map((price) => (
+                <td>{price === null ? '—' : currency.format(price)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</Site>
+<script>
+  const form = document.querySelector<HTMLFormElement>('#inspection-fees')!;
+  const kind = form.elements.namedItem('kind') as HTMLSelectElement;
+  const electric = form.elements.namedItem('electric') as HTMLSelectElement;
+  const output = document.querySelector<HTMLElement>('#inspection-price')!;
+  const money = new Intl.NumberFormat('he-IL', {
+    style: 'currency',
+    currency: 'ILS',
+  });
+  function show() {
+    const fields = new FormData(form);
+    const prices: (number | null)[] = JSON.parse(
+      kind.selectedOptions[0].dataset.prices!,
+    );
+    const price =
+      prices[Number(fields.get('repeat')) * 2 + Number(electric.value)];
+    output.textContent =
+      price == null
+        ? 'לא פורסם תעריף לשילוב שנבחר.'
+        : `מחיר המבחן במכון · ${money.format(price)}`;
+  }
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    show();
+  });
+  form.addEventListener('change', () => {
+    output.textContent = '';
+  });
+  const params = new URLSearchParams(location.search);
+  const category = params.get('kind');
+  if (Array.from(kind.options).some((option) => option.value === category))
+    kind.value = category!;
+  if (params.get('electric') === '1') electric.value = '1';
+  form.hidden = false;
+</script>

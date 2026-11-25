@@ -1,0 +1,149 @@
+import { expect, test } from 'vitest';
+import { buildReport } from '../../src/domain/report';
+import {
+  fieldSchema,
+  vehicleViewModel,
+} from '../../src/presentation/vehicle-view-model';
+import { fieldLabels } from '../../src/domain/format';
+import type { Row } from '../../src/data/types';
+
+const reply = (...rows: Row[]) => ({
+  rows,
+  fetchedAt: '2026-11-23T10:00:00Z',
+  durationMs: 12,
+});
+
+test('maps every legacy field to a canonical presentation rule', () => {
+  const represented = new Set(fieldSchema.flatMap((rule) => rule.keys));
+  expect(
+    Object.keys(fieldLabels).filter((key) => !represented.has(key)),
+  ).toEqual([]);
+});
+
+test('deduplicates equivalent chassis fields without deleting source values', () => {
+  const report = buildReport(
+    '11234567',
+    'registration',
+    {
+      private_cars_1: reply({
+        misgeret: 'ABC-1234',
+        mispar_shilda: 'abc1234',
+        shilda: 'ABC4567',
+        delek_nm: 'בנזין',
+        sug_delek_nm: 'בנזין',
+        hanaa_nm: 'קדמית',
+      }),
+    },
+    true,
+  );
+  const view = vehicleViewModel(report);
+  const rows = view.sections.flatMap((section) => section.groups.flat());
+  const chassis = rows.filter((row) => row.id === 'misgeret');
+  expect(chassis).toHaveLength(1);
+  expect(chassis[0].differences?.map((row) => row.text)).toEqual([
+    'ABC-1234',
+    'ABC4567',
+  ]);
+  expect(report.sources.private_cars_1?.rows[0].shilda).toBe('ABC4567');
+  expect(rows.some((row) => row.id === 'sug_delek_nm')).toBe(true);
+  expect(rows.some((row) => row.id === 'hanaa_nm')).toBe(true);
+});
+
+test('only highlights available data and puts equipment-specific information first', () => {
+  const report = buildReport(
+    '51234567',
+    'equipment',
+    {
+      cme: reply({
+        sug_tzama_nm: 'מחפר',
+        shilda_totzar_en_nm: 'CATERPILLAR',
+        tokef_date: '2027-05-01',
+        kosher_harama_ton: 4,
+        mishkal_ton: 22,
+      }),
+    },
+    true,
+  );
+  const view = vehicleViewModel(report);
+  expect(view.title).toContain('CATERPILLAR');
+  expect(view.status).toBeUndefined();
+  expect(view.highlights.map((row) => row.text)).toEqual(['01/05/2027']);
+  expect(view.sections[0].title).toBe('נתוני צמ״ה');
+  expect(
+    view.sections[0].groups.flat().find((row) => row.id === 'kosher_harama_ton')
+      ?.text,
+  ).toBe('4 טון');
+});
+
+test('shows history by plate separately when a non-private registration cannot verify it', () => {
+  const report = buildReport(
+    '11234567',
+    'registration',
+    {
+      heavy: reply({ mispar_rechev: 11234567, mispar_manoa: 'ABC123456' }),
+      history_1: reply({
+        mispar_rechev: 11234567,
+        mispar_manoa: 'XYZ654321',
+        kilometer_test_aharon: 87500,
+        rishum_rishon_dt: '2020-03-02',
+      }),
+    },
+    true,
+  );
+  const view = vehicleViewModel(report);
+  expect(report.unverified).toContain('history_1');
+  expect(report.fields.kilometer_test_aharon).toBeUndefined();
+  expect(
+    view.highlights.some((row) => row.id === 'kilometer_test_aharon'),
+  ).toBe(false);
+  const history = view.tables.find((table) => table.id === 'odometer-history');
+  expect(history?.note).toContain('לפי מספר רישוי');
+  expect(history?.rows).toEqual([['—', '87,500', '—']]);
+});
+
+test.each([
+  ['2027-02-13', 'רישוי בתוקף'],
+  ['2027-05-09', 'רישוי בתוקף'],
+  ['2025-11-22', 'תוקף הרישוי פג'],
+])(
+  'shows validity from the registry date %s with partial coverage',
+  (date, label) => {
+    const report = buildReport(
+      '11234567',
+      'registration',
+      {
+        publicTransport: reply({ tokef_dt: date }),
+      },
+      true,
+    );
+    expect(
+      vehicleViewModel(report, new Date('2026-11-24T10:00:00Z')).status,
+    ).toBe(label);
+  },
+);
+test('reports ownership periods and excludes a dealer from the hand count', () => {
+  const report = buildReport(
+    '11234567',
+    'registration',
+    {
+      private_cars_1: reply({ tokef_dt: '2027-02-13' }),
+      history_2: reply(
+        { baalut: 'פרטי', baalut_dt: 202401 },
+        { baalut: 'סוחר', baalut_dt: 202304 },
+        { baalut: 'פרטי', baalut_dt: 202201 },
+      ),
+    },
+    true,
+  );
+  const view = vehicleViewModel(report, new Date('2026-11-24T10:00:00Z'));
+  expect(view.highlights.find(({ id }) => id === 'ownership-count')?.text).toBe(
+    '2',
+  );
+  expect(
+    view.tables.find(({ id }) => id === 'ownership-history')?.rows,
+  ).toEqual([
+    ['ינואר–מרץ 2024', 'פרטי', '—', 'יד 2'],
+    ['אפריל–יוני 2023', 'סוחר', '9 חודשים', ''],
+    ['ינואר–מרץ 2022', 'פרטי', 'שנה ו־3 חודשים', 'יד 1'],
+  ]);
+});

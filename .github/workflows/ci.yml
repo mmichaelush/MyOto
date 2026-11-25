@@ -15,9 +15,19 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run verify
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run test:e2e
+        id: e2e
+        env:
+          MYOTO_E2E_STATIC: '1'
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.e2e.outcome == 'failure'
+        with:
+          name: playwright-failure
+          path: test-results/
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: myoto-preview

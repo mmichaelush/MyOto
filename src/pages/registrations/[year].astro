@@ -1,0 +1,14 @@
+---
+import RegistrationYear from '../../components/RegistrationYear.astro';
+import { registrationYears } from '../../data/registrations';
+
+export function getStaticPaths() {
+  return registrationYears.map((year) => ({
+    params: { year: String(year) },
+    props: { year },
+  }));
+}
+const { year } = Astro.props;
+---
+
+<RegistrationYear {year} />

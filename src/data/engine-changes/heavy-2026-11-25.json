@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "from": "2026-11",
+  "to": "2026-11",
+  "fromDate": "2026-11-24T20:37:23.831Z",
+  "toDate": "2026-11-25T08:15:33.355Z",
+  "earlierVerified": 246856,
+  "laterVerified": 246966,
+  "comparable": 246811,
+  "changed": 5,
+  "observedRate": 0.000020258416359076378
+}

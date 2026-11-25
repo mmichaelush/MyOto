@@ -1,0 +1,15 @@
+---
+import Site from '../layouts/Site.astro';
+import VehicleLookup from '../components/VehicleLookup.astro';
+import '../styles/vehicle.css';
+const base = import.meta.env.BASE_URL;
+---
+
+<Site title="בדיקת רכב מוטמעת" privatePage embedded>
+  <p class="embed-link">
+    <a href={base} target="_blank" rel="noopener">
+      פתיחת MyOto בחלון נפרד
+    </a>
+  </p>
+  <VehicleLookup embedded />
+</Site>

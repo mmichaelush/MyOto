@@ -1,0 +1,57 @@
+---
+import { count, rankedModels, type Make } from '../data/catalog';
+interface Props {
+  make: Make;
+  makeUrl: string;
+}
+const { make, makeUrl } = Astro.props;
+const ranked = rankedModels(make);
+---
+
+<section class="panel catalog-directory">
+  <h2>דגמים לפי כמות פעילה</h2>
+  <label class="control maker-filter" hidden>
+    חיפוש בין דגמי היצרן
+    <input class="text-input" type="search" placeholder="שם דגם" />
+  </label>
+  <p class="maker-filter-status muted" role="status" hidden></p>
+  <div class="model-grid">
+    {ranked.map((entry) => (
+      <a
+        class="model-card"
+        data-model-names={[entry.name, ...entry.aliases].join(' ')}
+        href={`${makeUrl}${entry.id}/`}
+      >
+        <bdi>{entry.name}</bdi> <span>{count.format(entry.active)} פעילים</span>
+      </a>
+    ))}
+  </div>
+</section>
+<script>
+  import { normalizeCatalogTerm } from '../presentation/catalog-search';
+  const filter = document.querySelector<HTMLElement>('.maker-filter');
+  const input = filter?.querySelector('input');
+  const status = document.querySelector<HTMLElement>('.maker-filter-status');
+  if (filter && input && status) {
+    filter.hidden = false;
+    status.hidden = false;
+    const entries = [
+      ...document.querySelectorAll<HTMLElement>('[data-model-names]'),
+    ];
+    input.addEventListener('input', () => {
+      const query = normalizeCatalogTerm(input.value);
+      let count = 0;
+      for (const entry of entries) {
+        entry.hidden = !normalizeCatalogTerm(
+          entry.dataset.modelNames ?? '',
+        ).includes(query);
+        if (!entry.hidden) count++;
+      }
+      status.textContent = query
+        ? count
+          ? `${count} דגמים תואמים`
+          : 'לא נמצאו דגמים תואמים.'
+        : '';
+    });
+  }
+</script>

@@ -1,0 +1,120 @@
+﻿---
+import Site from '../layouts/Site.astro';
+import '../styles/catalog.css';
+
+const fields = [
+  {
+    name: 'capacity',
+    label: 'קיבולת סוללה שימושית בקוט״ש',
+    max: 1000,
+    step: '0.1',
+  },
+  { name: 'from', label: 'אחוז טעינה התחלתי', max: 100, step: '1' },
+  { name: 'to', label: 'אחוז טעינה רצוי', max: 100, step: '1' },
+  { name: 'tariff', label: 'תעריף לקוט״ש בש״ח', max: 100, step: '0.001' },
+  {
+    name: 'consumption',
+    label: 'צריכה בקוט״ש ל־100 ק״מ',
+    max: 200,
+    step: '0.1',
+  },
+];
+---
+
+<Site title="מחשבון טעינת רכב חשמלי">
+  <section class="panel catalog-heading">
+    <h1>מחשבון טעינת רכב חשמלי</h1>
+    <form id="charging-cost" hidden>
+      <div class="grid-data">
+        {fields.map(({ name, label, max, step }) => (
+          <label class="control">
+            {label}
+            <input
+              class="text-input"
+              type="number"
+              {name}
+              {max}
+              {step}
+              min={name === 'capacity' || name === 'consumption' ? '0.1' : '0'}
+              required={name !== 'consumption'}
+            />
+          </label>
+        ))}
+      </div>
+      <button>חישוב טעינה</button>
+    </form>
+    <p id="charging-status" role="status"></p>
+    <dl class="grid-data" id="charging-results" hidden></dl>
+    <p class="muted">
+      החישוב מניח תעריף קבוע וקיבולת שימושית. הפסדי טעינה ועמלות עמדה עשויים
+      להגדיל את המחיר.
+    </p>
+    <a href={import.meta.env.BASE_URL + 'vehicle-cost/'}>
+      השוואת עלויות שנתיות
+    </a>
+  </section>
+</Site>
+
+<script>
+  import { element } from '../ui/dom';
+  import { vehicleCost } from '../domain/vehicle-cost';
+
+  const form = document.querySelector<HTMLFormElement>('#charging-cost')!;
+  const status = document.querySelector<HTMLElement>('#charging-status')!;
+  const results =
+    document.querySelector<HTMLDListElement>('#charging-results')!;
+  const count = new Intl.NumberFormat('he-IL', { maximumFractionDigits: 2 });
+  const money = new Intl.NumberFormat('he-IL', {
+    style: 'currency',
+    currency: 'ILS',
+  });
+  form.addEventListener('input', () => {
+    results.hidden = true;
+    status.textContent = '';
+  });
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const values = new FormData(form);
+    const capacity = Number(values.get('capacity'));
+    const from = Number(values.get('from'));
+    const to = Number(values.get('to'));
+    const tariff = Number(values.get('tariff'));
+    const consumption = Number(values.get('consumption'));
+    if (to < from) {
+      results.hidden = true;
+      status.textContent =
+        'אחוז הטעינה הרצוי צריך להיות שווה לאחוז ההתחלתי או גבוה ממנו.';
+      return;
+    }
+    const energy = (capacity * (to - from)) / 100;
+    const rows = [
+      ['אנרגיה שנוספה לסוללה', `${count.format(energy)} קוט״ש`],
+      ['עלות הטעינה המשוערת', money.format(energy * tariff)],
+    ];
+    if (consumption > 0) {
+      const cost = vehicleCost({
+        distance: 100,
+        consumption,
+        unitPrice: tariff,
+        insurance: 0,
+        maintenance: 0,
+        licensing: 0,
+      });
+      rows.push([
+        'טווח משוער שנוסף',
+        `${count.format((energy * 100) / consumption)} ק״מ`,
+      ]);
+      if (cost) rows.push(['עלות אנרגיה ל־100 ק״מ', money.format(cost.energy)]);
+    }
+    results.replaceChildren(
+      ...rows.map(([name, value]) => {
+        const item = element('div', undefined, 'datum');
+        item.append(element('dt', name), element('dd', value));
+        return item;
+      }),
+    );
+    results.hidden = false;
+    status.textContent = 'החישוב הושלם.';
+  });
+  form.hidden = false;
+</script>

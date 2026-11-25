@@ -1,0 +1,139 @@
+---
+import Site from '../layouts/Site.astro';
+import '../styles/catalog.css';
+---
+
+<Site title="מחשבון מידות צמיגים">
+  <section class="panel catalog-heading">
+    <h1>מחשבון מידות צמיגים</h1>
+    <p>
+      השוו את הקוטר ואת ההיקף המחושבים של שתי מידות, למשל <bdi>205/55R16</bdi>.
+      לבדיקת אישור המידה יש לעיין ברישיון הרכב ובהוראות היצרן.
+    </p>
+    <form id="tire-form" class="catalog-filters" hidden>
+      <label class="control">
+        מידה ברישיון או מידה קיימת
+        <input
+          class="text-input"
+          name="original"
+          maxlength="24"
+          dir="ltr"
+          placeholder="205/55R16"
+          required
+        />
+      </label>
+      <label class="control">
+        מידה להשוואה
+        <input
+          class="text-input"
+          name="candidate"
+          maxlength="24"
+          dir="ltr"
+          placeholder="225/45R17"
+          required
+        />
+      </label>
+      <button type="submit">השוואת מידות</button>
+    </form>
+    <p>
+      <a href={import.meta.env.BASE_URL + 'tires/'}>דגמים לפי מידת צמיג</a>
+    </p>
+    <noscript>
+      <p>מחשבון המידות דורש JavaScript.</p>
+    </noscript>
+  </section>
+  <section id="tire-results" class="panel catalog-data" hidden>
+    <h2>השוואת מידות מחושבת</h2>
+    <div
+      class="table-scroll"
+      role="region"
+      aria-label="השוואת מידות מחושבת"
+      tabindex="0"
+    >
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">מדד</th>
+            <th scope="col">מידה קיימת</th>
+            <th scope="col">מידה להשוואה</th>
+          </tr>
+        </thead>
+        <tbody id="tire-rows"></tbody>
+      </table>
+    </div>
+    <p>
+      ההשוואה מבוססת על גאומטריית המידה הנקובה. היקף הגלגול בפועל תלוי בצמיג,
+      בעומס ובלחץ האוויר. אומדן המהירות מניח שמד המהירות כויל למידה הקיימת
+      והכיול נשאר קבוע.
+    </p>
+  </section>
+  <p id="tire-status" role="status"></p>
+</Site>
+
+<script>
+  import { parseTireSize, tireGeometry } from '../domain/tires';
+  import { element } from '../ui/dom';
+  const form = document.querySelector<HTMLFormElement>('#tire-form')!;
+  const results = document.querySelector<HTMLElement>('#tire-results')!;
+  const rows = document.querySelector<HTMLTableSectionElement>('#tire-rows')!;
+  const status = document.querySelector<HTMLElement>('#tire-status')!;
+  const current = new URLSearchParams(location.search).get('size') ?? '';
+  const originalInput = form.elements.namedItem('original') as HTMLInputElement;
+  const parsed = parseTireSize(current);
+  if (parsed)
+    originalInput.value = `${parsed.width}/${parsed.aspect}R${parsed.rim}`;
+  const distance = new Intl.NumberFormat('he-IL', { maximumFractionDigits: 1 });
+  const percent = new Intl.NumberFormat('he-IL', {
+    style: 'percent',
+    maximumFractionDigits: 2,
+    signDisplay: 'exceptZero',
+  });
+  form.hidden = false;
+  form.addEventListener('input', () => {
+    results.hidden = true;
+    status.textContent = '';
+  });
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const original = parseTireSize(String(data.get('original') ?? ''));
+    const candidate = parseTireSize(String(data.get('candidate') ?? ''));
+    if (!original || !candidate) {
+      results.hidden = true;
+      status.textContent = 'הזינו שתי מידות רדיאליות בפורמט 205/55R16.';
+      return;
+    }
+    const first = tireGeometry(original);
+    const second = tireGeometry(candidate);
+    rows.replaceChildren();
+    for (const [label, a, b] of [
+      ['גובה דופן במ״מ', first.sidewall, second.sidewall],
+      ['קוטר במ״מ', first.diameter, second.diameter],
+      ['היקף במ״מ', first.circumference, second.circumference],
+      [
+        'מהירות מחושבת כשהמד מראה 100 קמ״ש',
+        100,
+        (100 * second.circumference) / first.circumference,
+      ],
+    ] as const) {
+      const row = rows.insertRow();
+      const th = element('th', label);
+      th.scope = 'row';
+      row.append(th);
+      row.insertCell().textContent = distance.format(a);
+      row.insertCell().textContent = distance.format(b);
+    }
+    results.hidden = false;
+    status.textContent = `שינוי בהיקף המחושב: ${percent.format(second.circumference / first.circumference - 1)}.`;
+  });
+</script>
+
+<style>
+  form[hidden],
+  section[hidden] {
+    display: none;
+  }
+  form button {
+    align-self: end;
+  }
+</style>

@@ -1,0 +1,13 @@
+﻿---
+import { count } from '../data/catalog';
+import { engineSnapshot } from '../data/engine-catalog';
+import { resources } from '../data/sources';
+---
+
+<p class="muted">
+  {engineSnapshot.sampled === engineSnapshot.population
+    ? `מרשם פעיל · ${count.format(engineSnapshot.population)} רשומות`
+    : `מדגם שיטתי · ${count.format(engineSnapshot.sampled)} מתוך ${count.format(engineSnapshot.population)} רשומות`}
+  · <bdi>{engineSnapshot.updatedAt.slice(0, 10)}</bdi>·{' '}
+  <a href={resources.private_cars_1.url}>מקור</a>
+</p>

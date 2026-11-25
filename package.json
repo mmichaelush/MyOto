@@ -16,20 +16,25 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "verify": "npm run format:check && npm run lint && npm run check && npm test && npm run build"
+    "audit:catalog": "node scripts/audit-catalog.mjs",
+    "verify": "npm run format:check && npm run lint && npm run check && npm test && npm run audit:catalog && npm run build"
   },
   "dependencies": {
+    "@fontsource-variable/heebo": "^5.3.0",
     "astro": "^7.4.13",
-    "html2canvas": "^1.4.1"
+    "html2canvas": "^1.4.1",
+    "lucide-static": "^1.78.0"
   },
   "devDependencies": {
     "@astrojs/check": "latest",
-    "typescript": "~6.0.0",
+    "@axe-core/playwright": "4.14.1",
+    "@playwright/test": "latest",
     "eslint": "^9.39.0",
-    "typescript-eslint": "latest",
     "prettier": "^3.0.0",
     "prettier-plugin-astro": "latest",
-    "vitest": "^5.1.1",
-    "@playwright/test": "latest"
-  }
+    "typescript": "~6.0.0",
+    "typescript-eslint": "latest",
+    "vitest": "^5.1.1"
+  },
+  "license": "SEE LICENSE IN LICENSE"
 }

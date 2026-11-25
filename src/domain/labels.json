@@ -1,0 +1,524 @@
+{
+  "tozeret_nm": {
+    "label": "יצרן",
+    "category": "כללי וזיהוי"
+  },
+  "kinuy_mishari": {
+    "label": "כינוי מסחרי",
+    "category": "כללי וזיהוי"
+  },
+  "degem_nm": {
+    "label": "דגם",
+    "category": "כללי וזיהוי"
+  },
+  "sug_rechev_nm": {
+    "label": "סוג רכב",
+    "category": "כללי וזיהוי"
+  },
+  "shnat_yitzur": {
+    "label": "שנת ייצור",
+    "category": "כללי וזיהוי"
+  },
+  "tzeva_rechev": {
+    "label": "צבע",
+    "category": "כללי וזיהוי"
+  },
+  "sug_yevu": {
+    "label": "סוג יבוא",
+    "category": "כללי וזיהוי"
+  },
+  "shem_yevuan": {
+    "label": "שם יבואן",
+    "category": "כללי וזיהוי"
+  },
+  "tozeret_eretz_nm": {
+    "label": "ארץ ייצור",
+    "category": "כללי וזיהוי"
+  },
+  "production_country": {
+    "label": "ארץ ייצור",
+    "category": "כללי וזיהוי"
+  },
+  "mispar_rechavim_pailim": {
+    "label": "סה\"כ על הכביש",
+    "category": "כללי וזיהוי"
+  },
+  "horaat_rishum": {
+    "label": "הוראת רישום",
+    "category": "כללי וזיהוי"
+  },
+  "misgeret": {
+    "label": "מספר שלדה",
+    "category": "כללי וזיהוי"
+  },
+  "mispar_shilda": {
+    "label": "מספר שלדה",
+    "category": "כללי וזיהוי"
+  },
+  "shilda": {
+    "label": "מספר שלדה",
+    "category": "כללי וזיהוי"
+  },
+  "sug_tkina_nm": {
+    "label": "סוג תקינה",
+    "category": "כללי וזיהוי"
+  },
+  "tkina_EU": {
+    "label": "תקינת EU",
+    "category": "כללי וזיהוי"
+  },
+  "sug_rechev_EU_cd": {
+    "label": "תקינת EU",
+    "category": "כללי וזיהוי"
+  },
+  "mehir": {
+    "label": "מחיר יבואן",
+    "category": "כללי וזיהוי",
+    "format": "currency"
+  },
+  "tozar_manoa": {
+    "label": "יצרן מנוע",
+    "category": "מנוע והנעה"
+  },
+  "degem_manoa": {
+    "label": "דגם מנוע",
+    "category": "מנוע והנעה"
+  },
+  "mispar_manoa": {
+    "label": "מספר מנוע",
+    "category": "מנוע והנעה"
+  },
+  "nefach_manoa": {
+    "label": "נפח מנוע (סמ\"ק)",
+    "category": "מנוע והנעה",
+    "format": "number"
+  },
+  "koah_sus": {
+    "label": "הספק (כ\"ס)",
+    "category": "מנוע והנעה"
+  },
+  "hespek": {
+    "label": "הספק (כ\"ס)",
+    "category": "מנוע והנעה"
+  },
+  "sug_delek_nm": {
+    "label": "סוג דלק",
+    "category": "מנוע והנעה"
+  },
+  "PropulsionType_nm": {
+    "label": "סוג הנעה",
+    "category": "מנוע והנעה"
+  },
+  "hanaa_nm": {
+    "label": "הנעה",
+    "category": "מנוע והנעה"
+  },
+  "automatic_ind": {
+    "label": "גיר אוטומטי",
+    "category": "מנוע והנעה",
+    "format": "bool"
+  },
+  "gapam_ind": {
+    "label": "הסבה לגפ\"מ",
+    "category": "מנוע והנעה",
+    "format": "bool"
+  },
+  "dg_metach_solela": {
+    "label": "מתח סוללה (V)",
+    "category": "מנוע והנעה"
+  },
+  "mispar_yad_nochichi": {
+    "label": "יד",
+    "category": "רישוי ובעלות"
+  },
+  "moed_aliya_lakvish": {
+    "label": "עליה לכביש",
+    "category": "רישוי ובעלות",
+    "format": "date"
+  },
+  "tokef_dt": {
+    "label": "תוקף רישיון",
+    "category": "רישוי ובעלות",
+    "format": "date"
+  },
+  "mivchan_acharon_dt": {
+    "label": "טסט אחרון",
+    "category": "רישוי ובעלות",
+    "format": "date"
+  },
+  "rishum_rishon_dt": {
+    "label": "תאריך רישום ראשוני",
+    "category": "רישוי ובעלות",
+    "format": "date"
+  },
+  "rishum_date": {
+    "label": "תאריך רישום",
+    "category": "רישוי ובעלות",
+    "format": "date"
+  },
+  "bitul_dt": {
+    "label": "מועד ביטול הרישום",
+    "category": "רישוי ובעלות",
+    "format": "date"
+  },
+  "mkoriut_nm": {
+    "label": "בעלות ראשונית",
+    "category": "כללי וזיהוי"
+  },
+  "baalut": {
+    "label": "בעלות נוכחית",
+    "category": "רישוי ובעלות"
+  },
+  "kilometer_test_aharon": {
+    "label": "ק\"מ בטסט אחרון",
+    "category": "רישוי ובעלות",
+    "format": "number"
+  },
+  "total_kilometer": {
+    "label": "קילומטראז' כולל",
+    "category": "רישוי ובעלות",
+    "format": "number"
+  },
+  "kvuzat_agra_cd": {
+    "label": "קבוצת אגרה",
+    "category": "רישוי ובעלות"
+  },
+  "bitul_nm": {
+    "label": "סטטוס ביטול",
+    "category": "רישוי ובעלות"
+  },
+  "tokef_date": {
+    "label": "תוקף רישוי (צמ\"ה)",
+    "category": "רישוי ובעלות",
+    "format": "date"
+  },
+  "shinui_mivne_ind": {
+    "label": "עבר שינוי מבנה",
+    "category": "רישוי ובעלות",
+    "format": "bool"
+  },
+  "shnui_zeva_ind": {
+    "label": "עבר שינוי צבע",
+    "category": "רישוי ובעלות",
+    "format": "bool"
+  },
+  "shinui_zmig_ind": {
+    "label": "עבר שינוי צמיגים",
+    "category": "רישוי ובעלות",
+    "format": "bool"
+  },
+  "mishkal_kolel": {
+    "label": "משקל כולל (ק\"ג)",
+    "category": "מידות ומשקלים",
+    "format": "number"
+  },
+  "mishkal_azmi": {
+    "label": "משקל עצמי (ק\"ג)",
+    "category": "מידות ומשקלים",
+    "format": "number"
+  },
+  "merkav": {
+    "label": "מרכב",
+    "category": "מידות ומשקלים"
+  },
+  "mispar_dlatot": {
+    "label": "מספר דלתות",
+    "category": "מידות ומשקלים"
+  },
+  "gova": {
+    "label": "גובה (מ\"מ)",
+    "category": "מידות ומשקלים",
+    "format": "number"
+  },
+  "mispar_moshavim": {
+    "label": "מספר מושבים",
+    "category": "מידות ומשקלים"
+  },
+  "SeatsNum": {
+    "label": "מספר מושבים",
+    "category": "מידות ומשקלים"
+  },
+  "argaz_ind": {
+    "label": "ארגז",
+    "category": "מידות ומשקלים",
+    "format": "bool"
+  },
+  "kosher_grira_im_blamim": {
+    "label": "כושר גרירה עם בלמים (ק\"ג)",
+    "category": "מידות ומשקלים",
+    "format": "number"
+  },
+  "kosher_grira_bli_blamim": {
+    "label": "כושר גרירה בלי בלמים (ק\"ג)",
+    "category": "מידות ומשקלים",
+    "format": "number"
+  },
+  "galgaley_sagsoget_kala_ind": {
+    "label": "חישוקי סגסוגת קלה (ג'אנט מגנזיום)",
+    "category": "צמיגים וחישוקים",
+    "format": "bool"
+  },
+  "zmig_kidmi": {
+    "label": "מידות צמיג קדמי",
+    "category": "צמיגים וחישוקים"
+  },
+  "zmig_ahori": {
+    "label": "מידות צמיג אחורי",
+    "category": "צמיגים וחישוקים"
+  },
+  "kod_omes_tzmig_kidmi": {
+    "label": "קוד עומס (קדמי)",
+    "category": "צמיגים וחישוקים"
+  },
+  "kod_omes_tzmig_ahori": {
+    "label": "קוד עומס (אחורי)",
+    "category": "צמיגים וחישוקים"
+  },
+  "kod_mehirut_tzmig_kidmi": {
+    "label": "קוד מהירות (קדמי)",
+    "category": "צמיגים וחישוקים"
+  },
+  "kod_mehirut_tzmig_ahori": {
+    "label": "קוד מהירות (אחורי)",
+    "category": "צמיגים וחישוקים"
+  },
+  "ramat_gimur": {
+    "label": "רמת גימור",
+    "category": "אבזור ונוחות"
+  },
+  "mazgan_ind": {
+    "label": "מזגן",
+    "category": "אבזור ונוחות",
+    "format": "bool"
+  },
+  "hege_koah_ind": {
+    "label": "הגה כוח",
+    "category": "אבזור ונוחות",
+    "format": "bool"
+  },
+  "mispar_halonot_hashmal": {
+    "label": "חלונות חשמל",
+    "category": "אבזור ונוחות"
+  },
+  "halon_bagg_ind": {
+    "label": "חלון בגג",
+    "category": "אבזור ונוחות",
+    "format": "bool"
+  },
+  "matzlemat_reverse_ind": {
+    "label": "מצלמת רוורס",
+    "category": "אבזור ונוחות",
+    "format": "bool"
+  },
+  "grira_nm": {
+    "label": "וו גרירה",
+    "category": "אבזור ונוחות"
+  },
+  "sug_tzama_nm": {
+    "label": "סוג צמ\"ה",
+    "category": "נתוני צמ\"ה ורכב כבד"
+  },
+  "shilda_totzar_en_nm": {
+    "label": "יצרן שלדה (צמ\"ה)",
+    "category": "נתוני צמ\"ה ורכב כבד"
+  },
+  "mishkal_ton": {
+    "label": "משקל (טון)",
+    "category": "נתוני צמ\"ה ורכב כבד"
+  },
+  "kosher_harama_ton": {
+    "label": "כושר הרמה (טון)",
+    "category": "נתוני צמ\"ה ורכב כבד"
+  },
+  "hagbala_nm_1": {
+    "label": "הגבלה 1",
+    "category": "נתוני צמ\"ה ורכב כבד"
+  },
+  "hagbala_nm_2": {
+    "label": "הגבלה 2",
+    "category": "נתוני צמ\"ה ורכב כבד"
+  },
+  "operator_nm": {
+    "label": "מפעיל",
+    "category": "תחבורה ציבורית וצי רכב"
+  },
+  "cluster_nm": {
+    "label": "אשכול שירות",
+    "category": "תחבורה ציבורית וצי רכב"
+  },
+  "BusSize_nm": {
+    "label": "גודל אוטובוס",
+    "category": "תחבורה ציבורית וצי רכב"
+  },
+  "BusType_nm": {
+    "label": "סוג אוטובוס",
+    "category": "תחבורה ציבורית וצי רכב"
+  },
+  "mispar_mekomot_leyd_nahag": {
+    "label": "מושבים ליד הנהג",
+    "category": "תחבורה ציבורית וצי רכב"
+  },
+  "ramat_eivzur_betihuty": {
+    "label": "רמת בטיחות",
+    "category": "בטיחות פסיבית",
+    "max": 8
+  },
+  "mispar_kariot_avir": {
+    "label": "כריות אוויר",
+    "category": "בטיחות פסיבית"
+  },
+  "abs_ind": {
+    "label": "ABS",
+    "category": "בטיחות פסיבית",
+    "format": "bool"
+  },
+  "bakarat_yatzivut_ind": {
+    "label": "בקרת יציבות",
+    "category": "בטיחות פסיבית",
+    "format": "bool"
+  },
+  "hayshaney_hagorot_ind": {
+    "label": "חיישני חגורות",
+    "category": "בטיחות פסיבית",
+    "format": "bool"
+  },
+  "hayshaney_lahatz_avir_batzmigim_ind": {
+    "label": "חיישני לחץ אוויר",
+    "category": "בטיחות פסיבית",
+    "format": "bool"
+  },
+  "bakarat_stiya_menativ_ind": {
+    "label": "התראת סטיה מנתיב",
+    "category": "מערכות בטיחות אקטיביות",
+    "format": "bool"
+  },
+  "bakarat_stiya_activ_s": {
+    "label": "בקרת סטיה אקטיבית",
+    "category": "מערכות בטיחות אקטיביות",
+    "format": "bool"
+  },
+  "nitur_merhak_milfanim_ind": {
+    "label": "ניטור מרחק מלפנים",
+    "category": "מערכות בטיחות אקטיביות",
+    "format": "bool"
+  },
+  "zihuy_matzav_hitkarvut_mesukenet_ind": {
+    "label": "התראת התנגשות",
+    "category": "מערכות בטיחות אקטיביות",
+    "format": "bool"
+  },
+  "bakarat_shyut_adaptivit_ind": {
+    "label": "בקרת שיוט אדפטיבית",
+    "category": "מערכות בטיחות אקטיביות",
+    "format": "bool"
+  },
+  "zihuy_holchey_regel_ind": {
+    "label": "זיהוי הולכי רגל",
+    "category": "מערכות בטיחות אקטיביות",
+    "format": "bool"
+  },
+  "blimat_hirum_lifnei_holhei_regel_ofanaim": {
+    "label": "בלימת חירום (הולכי רגל ודו-גלגלי)",
+    "category": "מערכות בטיחות אקטיביות",
+    "format": "bool"
+  },
+  "zihuy_rechev_do_galgali": {
+    "label": "זיהוי רכב דו-גלגלי",
+    "category": "מערכות בטיחות אקטיביות",
+    "format": "bool"
+  },
+  "blima_otomatit_nesia_leahor": {
+    "label": "בלימה אוטונומית ברוורס",
+    "category": "מערכות בטיחות אקטיביות",
+    "format": "bool"
+  },
+  "zihuy_beshetah_nistar_ind": {
+    "label": "ניטור שטח מת",
+    "category": "מערכות בטיחות אקטיביות",
+    "format": "bool"
+  },
+  "hitnagshut_cad_shetah_met": {
+    "label": "מניעת התנגשות בשטח מת",
+    "category": "מערכות בטיחות אקטיביות",
+    "format": "bool"
+  },
+  "zihuy_tamrurey_tnua_ind": {
+    "label": "זיהוי תמרורים",
+    "category": "מערכות בטיחות אקטיביות",
+    "format": "bool"
+  },
+  "shlita_automatit_beorot_gvohim_ind": {
+    "label": "שליטה אוטומטית באורות גבוהים",
+    "category": "מערכות בטיחות אקטיביות",
+    "format": "bool"
+  },
+  "maarechet_ezer_labalam_ind": {
+    "label": "מערכת עזר לבלימה",
+    "category": "מערכות בטיחות אקטיביות",
+    "format": "bool"
+  },
+  "bakarat_mehirut_isa": {
+    "label": "בקרת מהירות חכמה (ISA)",
+    "category": "מערכות בטיחות אקטיביות",
+    "format": "bool"
+  },
+  "alco_lock": {
+    "label": "נעילת אלכוהול",
+    "category": "מערכות בטיחות אקטיביות",
+    "format": "bool"
+  },
+  "stone_proof_nm": {
+    "label": "מיגון אבנים",
+    "category": "מערכות בטיחות אקטיביות"
+  },
+  "bullet_proof_nm": {
+    "label": "מיגון ירי",
+    "category": "מערכות בטיחות אקטיביות"
+  },
+  "kvutzat_zihum": {
+    "label": "קבוצת זיהום",
+    "category": "פליטות וסביבה",
+    "max": 15
+  },
+  "technologiat_hanaa_nm": {
+    "label": "טכנולוגיית הנעה",
+    "category": "פליטות וסביבה"
+  },
+  "madad_yarok": {
+    "label": "מדד ירוק",
+    "category": "פליטות וסביבה"
+  },
+  "kamut_CO2_WLTP": {
+    "label": "פליטת CO2 (WLTP)",
+    "category": "פליטות וסביבה"
+  },
+  "kamut_CO2": {
+    "label": "פליטת CO2 (NEDC)",
+    "category": "פליטות וסביבה"
+  },
+  "kamut_NOX": {
+    "label": "פליטת NOX",
+    "category": "פליטות וסביבה"
+  },
+  "kamut_PM10": {
+    "label": "פליטת PM10",
+    "category": "פליטות וסביבה"
+  },
+  "kamut_CO2_city": {
+    "label": "פליטת CO2 (עירוני)",
+    "category": "פליטות וסביבה"
+  },
+  "kamut_CO2_hway": {
+    "label": "פליטת CO2 (בינעירוני)",
+    "category": "פליטות וסביבה"
+  },
+  "sug_mamir_nm": {
+    "label": "סוג ממיר",
+    "category": "פליטות וסביבה"
+  },
+  "taarich_hatkana": {
+    "label": "תאריך התקנת מסנן",
+    "category": "פליטות וסביבה",
+    "format": "date"
+  }
+}

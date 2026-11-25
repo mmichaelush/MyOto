@@ -6,3 +6,9 @@ package-lock.json
 src/data/catalog.json
 test-results/
 playwright-report/
+src/data/engine-catalog.json
+src/data/registrations.json
+
+src/data/tire-catalog.json
+
+src/data/specialty-catalog.json

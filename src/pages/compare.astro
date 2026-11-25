@@ -1,0 +1,45 @@
+---
+import Site from '../layouts/Site.astro';
+---
+
+<Site title="השוואת רכבים" privatePage={true}>
+  <section class="panel compare-intro">
+    <h1>השוואת רכבים</h1>
+    <p>בדקו מפרט, מצב רישוי ונסועה של שני כלי רכב זה לצד זה.</p>
+    <p>
+      <a href={import.meta.env.BASE_URL + 'compare-models/'}>
+        השוואת דגמים ושנתונים
+      </a>
+    </p>
+    <form class="search" id="compare">
+      <label class="control">
+        רכב ראשון
+        <input
+          class="text-input"
+          name="a"
+          inputmode="numeric"
+          maxlength="18"
+          dir="ltr"
+          required
+        />
+      </label>
+      <label class="control">
+        רכב שני
+        <input
+          class="text-input"
+          name="b"
+          inputmode="numeric"
+          maxlength="18"
+          dir="ltr"
+          required
+        />
+      </label>
+      <button>השוואה</button>
+    </form>
+  </section>
+  <p role="status" id="comparison-status"></p>
+  <section id="comparison" hidden aria-label="תוצאות השוואה"></section>
+</Site>
+<script>
+  import '../ui/compare';
+</script>

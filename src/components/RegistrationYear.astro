@@ -1,0 +1,125 @@
+---
+import Site from '../layouts/Site.astro';
+import { count } from '../data/catalog';
+import { registrations, registrationYears } from '../data/registrations';
+import { resources } from '../data/sources';
+import {
+  registrationComparison,
+  registrationTotal,
+} from '../domain/registrations';
+import '../styles/catalog.css';
+
+interface Props {
+  year: number;
+}
+const { year } = Astro.props;
+const base = import.meta.env.BASE_URL + 'registrations/';
+const rows = registrations.months.filter(
+  ([month]) => Math.floor(month / 100) === year,
+);
+const peak = Math.max(1, ...rows.map((row) => registrationTotal(row) ?? 0));
+const comparison = registrationComparison(registrations.months, year);
+const percent = new Intl.NumberFormat('he-IL', {
+  style: 'percent',
+  maximumFractionDigits: 1,
+  signDisplay: 'exceptZero',
+});
+const date = new Intl.DateTimeFormat('he-IL', {
+  month: 'long',
+  timeZone: 'UTC',
+});
+const number = (value: number | null) =>
+  value === null ? 'לא זמין' : count.format(value);
+---
+
+<Site
+  title={`כלי רכב חדשים שעלו לכביש ב־${year}`}
+  canonicalPath={base + year + '/'}
+>
+  <section class="panel catalog-heading">
+    <h1>כלי רכב חדשים שעלו לכביש ב־{year}</h1>
+    <p>
+      ספירות חודשיות של משרד התחבורה לפי חודש הסגירה, בחלוקה לכלי רכב עם קוד דגם
+      ובלעדיו.
+    </p>
+    <nav class="catalog-year-links" aria-label="שנת רישום">
+      {registrationYears.map((item) => (
+        <a
+          href={base + item + '/'}
+          aria-current={item === year ? 'page' : undefined}
+        >
+          {item}
+        </a>
+      ))}
+    </nav>
+    <p class="muted">
+      מקור עם קוד דגם עודכן ב־
+      <bdi>{registrations.updatedAt.monthly.slice(0, 10)}</bdi>. מקור ללא קוד
+      דגם עודכן ב־
+      <bdi>{registrations.updatedAt.monthlyNoModel.slice(0, 10)}</bdi>.
+      <a href={resources.monthly.url}>מאגר עם קוד דגם</a> ·
+      <a href={resources.monthlyNoModel.url}>מאגר ללא קוד דגם</a>
+    </p>
+  </section>
+  <section class="panel catalog-data">
+    <h2>ספירות לפי חודש</h2>
+    <a href={base + year + '.csv'} download>
+      הורדת נתוני השנה כ־CSV
+    </a>
+    {comparison.months > 0 && (
+      <p>
+        ב־{comparison.months} חודשים עם כיסוי מלא בשתי השנים נרשמו{' '}
+        {count.format(comparison.currentTotal)} כלי רכב, לעומת{' '}
+        {count.format(comparison.previousTotal)} באותם חודשים בשנה הקודמת.
+        {comparison.change !== null && (
+          <>
+            {' '}
+            שינוי של <bdi>{percent.format(comparison.change)}</bdi>.
+          </>
+        )}
+      </p>
+    )}
+    <div
+      class="table-scroll"
+      role="region"
+      aria-label="כלי רכב חדשים לפי חודש"
+      tabindex="0"
+    >
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">חודש</th>
+            <th scope="col">עם קוד דגם</th>
+            <th scope="col">ללא קוד דגם</th>
+            <th scope="col">סך הכול</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const [month, coded, uncoded] = row;
+            const total = registrationTotal(row);
+            return (
+              <tr>
+                <th scope="row">
+                  {date.format(Date.UTC(year, (month % 100) - 1))}
+                </th>
+                <td>{number(coded)}</td>
+                <td>{number(uncoded)}</td>
+                <td>
+                  {number(total)}
+                  {total !== null && (
+                    <meter value={total} max={peak} aria-hidden="true"></meter>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">
+      חודש שחסרה בו ספירה מאחד המקורות נשאר ללא סך כולל. הטבלה כוללת את החודשים
+      שפורסמו.
+    </p>
+  </section>
+</Site>

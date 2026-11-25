@@ -1,0 +1,81 @@
+﻿---
+import Site from '../../../layouts/Site.astro';
+import { resources } from '../../../data/sources';
+import '../../../styles/catalog.css';
+---
+
+<Site title="כלי רכב שירדו מהכביש">
+  <section class="panel catalog-data">
+    <a href={import.meta.env.BASE_URL + 'engines/'}>קטלוג קודי מנוע</a>
+    <h1>כלי רכב שירדו מהכביש</h1>
+    <p id="retired-status" role="status"></p>
+    <div
+      class="table-scroll"
+      role="region"
+      aria-label="רישומי ירידה מהכביש לפי קוד מנוע"
+      tabindex="0"
+      hidden
+    >
+      <table>
+        <thead>
+          <tr>
+            <th>שנת ירידה מהכביש</th>
+            <th>תוצר מנוע</th>
+            <th>תוצר ודגם רכב</th>
+            <th>רשומות</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <a href={resources.offRoad_1.url}>מקור</a>
+  </section>
+</Site>
+
+<script>
+  import { engineSlug, normalizeEngineCode } from '../../../domain/engine-code';
+  const status = document.querySelector<HTMLElement>('#retired-status')!;
+  const table = document.querySelector<HTMLTableElement>('table')!;
+  const code = normalizeEngineCode(
+    new URLSearchParams(location.search).get('code'),
+  );
+  const count = new Intl.NumberFormat('he-IL');
+  type Group = [string, string, string, string, number];
+
+  async function load() {
+    if (!code) {
+      status.textContent = 'בחרו קוד מנוע מהקטלוג.';
+      return;
+    }
+    const id = engineSlug(code);
+    const bucket = id.slice(0, 2).replace(/[^a-z0-9]/g, '_');
+    status.textContent = 'טוען רישומי ירידה מהכביש…';
+    try {
+      const response = await fetch(
+        import.meta.env.BASE_URL + 'engines/history/' + bucket + '.json',
+      );
+      if (!response.ok) throw new Error('Registry file unavailable');
+      const rows = new Map<string, Group[]>(await response.json()).get(id);
+      if (!rows) {
+        status.textContent = 'אין רישומי ביטול לקוד המנוע.';
+        return;
+      }
+      const body = table.tBodies[0];
+      for (const [year, engineMaker, maker, model, total] of rows) {
+        const row = body.insertRow();
+        for (const value of [
+          year,
+          engineMaker,
+          [maker, model].filter(Boolean).join(' · '),
+          count.format(total),
+        ])
+          row.insertCell().textContent = value || '—';
+      }
+      table.parentElement!.hidden = false;
+      status.textContent = code;
+    } catch {
+      status.textContent = 'טעינת רישומי הירידה מהכביש נכשלה.';
+    }
+  }
+  void load();
+</script>

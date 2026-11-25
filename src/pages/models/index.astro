@@ -1,0 +1,362 @@
+---
+import Site from '../../layouts/Site.astro';
+import CatalogSource from '../../components/CatalogSource.astro';
+import { catalog, count } from '../../data/catalog';
+import {
+  powertrainFields,
+  powertrainValues,
+} from '../../data/catalog-powertrain';
+import { cohorts } from '../../data/cohorts';
+import '../../styles/catalog.css';
+const base = import.meta.env.BASE_URL + 'models/';
+const modelCount = catalog.makes.reduce((n, make) => n + make.models.length, 0);
+const ownershipTypes = [
+  ...new Set(
+    Object.values(cohorts).flatMap(
+      (cohort) =>
+        cohort?.ownership.flatMap(([label, occurrences]) =>
+          occurrences >= 5 && label !== 'לא ידוע' && label !== 'קטגוריות נוספות'
+            ? [label]
+            : [],
+        ) ?? [],
+    ),
+  ),
+].sort((a, b) => a.localeCompare(b, 'he', { numeric: true }));
+const powertrainOptions = powertrainFields.map(() => new Set<string>());
+for (const make of catalog.makes)
+  for (const model of make.models)
+    for (const row of model.records)
+      for (const spec of row.variants)
+        powertrainValues(spec)
+          .slice(1)
+          .forEach((value, index) => {
+            if (value) powertrainOptions[index].add(value);
+          });
+---
+
+<Site title="יצרנים ודגמים בישראל">
+  <section class="panel catalog-heading">
+    <h1>יצרנים ודגמים בישראל</h1>
+    <p>
+      {count.format(modelCount)} דגמים בקטלוג משרד התחבורה. חפשו לפי יצרן, דגם,
+      שנת ייצור או רמת גימור.
+    </p>
+    <div class="catalog-filters">
+      <label class="control">
+        חיפוש בקטלוג
+        <input
+          id="model-filter"
+          class="text-input"
+          type="search"
+          list="model-names"
+          placeholder="לדוגמה: לנסר 2010"
+          autocomplete="off"
+        />
+      </label>
+      <label class="control">
+        יצרן
+        <select id="catalog-make">
+          <option value="">כל היצרנים</option>
+          {catalog.makes.map((make) => (
+            <option value={make.id}>{make.name}</option>
+          ))}
+        </select>
+      </label>
+      <label class="control">
+        שנת ייצור
+        <input
+          id="catalog-year"
+          class="text-input"
+          inputmode="numeric"
+          maxlength="4"
+          placeholder="כל השנים"
+        />
+      </label>
+    </div>
+    <details class="catalog-facets">
+      <summary>סינון לפי גימור ובעלות</summary>
+      <div class="catalog-filters">
+        <label class="control">
+          רמת גימור
+          <input
+            id="catalog-trim"
+            class="text-input"
+            placeholder="שם גימור מדויק"
+            autocomplete="off"
+          />
+        </label>
+        <label class="control">
+          בעלות במדגם
+          <select id="catalog-ownership">
+            <option value="">כל סוגי הבעלות</option>
+            {ownershipTypes.map((label) => (
+              <option value={label}>{label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <small class="muted">
+        בעלות מוצגת לפי המדגמים הזמינים. בחירה גם בגימור מחפשת שילוב שנצפה
+        במדגם.
+      </small>
+    </details>
+    <details class="catalog-facets" id="powertrain-facets">
+      <summary>סינון לפי מפרט, ארץ תוצר ואבזור</summary>
+      <div class="catalog-filters">
+        {powertrainFields.map(([key, label], index) => (
+          <label class="control">
+            {label}
+            <select data-powertrain={key}>
+              <option value="">הכול</option>
+              {[...powertrainOptions[index]]
+                .sort((a, b) => a.localeCompare(b, 'he', { numeric: true }))
+                .map((value) => (
+                  <option value={value}>{value}</option>
+                ))}
+            </select>
+          </label>
+        ))}
+      </div>
+    </details>
+    <datalist id="model-names"></datalist>
+    <p id="model-filter-status" role="status" class="muted"></p>
+  </section>
+  <section
+    class="panel catalog-directory"
+    id="model-results"
+    aria-label="תוצאות חיפוש"
+    hidden
+  >
+    <div class="catalog-results-heading">
+      <h2>תוצאות חיפוש</h2>
+      <button class="secondary" id="catalog-reset" type="button">
+        חזרה לרשימת יצרנים
+      </button>
+    </div>
+    <div class="model-grid"></div>
+  </section>
+  <section class="panel catalog-directory" id="all-makes">
+    <h2>רשימת יצרנים</h2>
+    <div class="model-grid">
+      {catalog.makes.map((make) => (
+        <a class="model-card" href={base + make.id + '/'}>
+          <strong>
+            <bdi>{make.name}</bdi>
+          </strong>
+          <span>{count.format(make.models.length)} דגמים</span>
+        </a>
+      ))}
+    </div>
+  </section>
+  <p>
+    <a href={import.meta.env.BASE_URL + 'fleet/'}>סטטיסטיקת כלי רכב</a>
+  </p>
+  <p>
+    <a href={import.meta.env.BASE_URL + 'engines/'}>קטלוג קודי מנוע</a>
+  </p>
+  <CatalogSource />
+</Site>
+<script>
+  import { element, link } from '../../ui/dom';
+  import {
+    catalogResultYear,
+    normalizeCatalogTerm,
+    rankCatalog,
+    type CatalogFacetIndex,
+    type PowertrainIndex,
+    type CatalogSearchItem,
+  } from '../../presentation/catalog-search';
+  const input = document.querySelector<HTMLInputElement>('#model-filter')!;
+  const status = document.querySelector<HTMLElement>('#model-filter-status')!;
+  const make = document.querySelector<HTMLSelectElement>('#catalog-make')!;
+  const yearInput = document.querySelector<HTMLInputElement>('#catalog-year')!;
+  const trim = document.querySelector<HTMLInputElement>('#catalog-trim')!;
+  const ownership =
+    document.querySelector<HTMLSelectElement>('#catalog-ownership')!;
+  const makes = document.querySelector<HTMLElement>('#all-makes')!;
+  const section = document.querySelector<HTMLElement>('#model-results')!;
+  const grid = section.querySelector('.model-grid')!;
+  const suggestions =
+    document.querySelector<HTMLDataListElement>('#model-names')!;
+  const base = import.meta.env.BASE_URL + 'models/';
+  let index: Promise<CatalogSearchItem[]> | undefined;
+  let facetIndex: Promise<CatalogFacetIndex> | undefined;
+  let current = 0;
+  const count = new Intl.NumberFormat('he-IL');
+  const powertrain = [
+    ...document.querySelectorAll<HTMLSelectElement>('[data-powertrain]'),
+  ];
+  let powertrainIndex: Promise<PowertrainIndex> | undefined;
+  async function loadIndex<T>(path: string): Promise<T> {
+    const response = await fetch(base + path);
+    if (!response.ok) throw new Error('Catalog index unavailable');
+    return (await response.json()) as T;
+  }
+
+  async function search() {
+    const id = ++current;
+    const terms = normalizeCatalogTerm(input.value).split(' ').filter(Boolean);
+    const inlineYear = terms.find((term) => /^(?:19|20)\d{2}$/.test(term));
+    const requestedYear = /^(?:19|20)\d{2}$/.test(yearInput.value.trim())
+      ? yearInput.value.trim()
+      : inlineYear;
+    const query = terms.filter((term) => term !== inlineYear).join(' ');
+    const selectedPowertrain = powertrain.map(({ value }) => value);
+    if (
+      !query &&
+      !requestedYear &&
+      !make.value &&
+      !trim.value.trim() &&
+      !ownership.value &&
+      !selectedPowertrain.some(Boolean)
+    ) {
+      makes.hidden = false;
+      section.hidden = true;
+      status.textContent = '';
+      suggestions.replaceChildren();
+      return;
+    }
+    status.textContent = 'טוען תוצאות…';
+    index ??= loadIndex<CatalogSearchItem[]>('search-index.json').catch(
+      (error) => {
+        index = undefined;
+        throw error;
+      },
+    );
+    const selectedTrim = trim.value.trim();
+    const selectedOwnership = ownership.value;
+    const facetData =
+      selectedTrim || selectedOwnership
+        ? (facetIndex ??= loadIndex<CatalogFacetIndex>('facets.json').catch(
+            (error) => {
+              facetIndex = undefined;
+              throw error;
+            },
+          ))
+        : undefined;
+    const specData = selectedPowertrain.some(Boolean)
+      ? (powertrainIndex ??= loadIndex<PowertrainIndex>(
+          'powertrain.json',
+        ).catch((error) => {
+          powertrainIndex = undefined;
+          throw error;
+        }))
+      : undefined;
+    try {
+      const [list, data, specs] = await Promise.all([
+        index,
+        facetData,
+        specData,
+      ]);
+      if (id !== current) return;
+      const filters = {
+        trim: selectedTrim,
+        ownership: selectedOwnership,
+        index: data,
+        powertrain: selectedPowertrain,
+        powertrainIndex: specs,
+      };
+      const matches = rankCatalog(
+        list,
+        query,
+        make.value,
+        requestedYear ? Number(requestedYear) : undefined,
+        filters,
+      );
+      const shown = matches.slice(0, 36);
+      grid.replaceChildren(
+        ...shown.map((entry) => {
+          const year = requestedYear ?? catalogResultYear(entry, filters);
+          const card = link(
+            '',
+            base + entry.path + '/' + (year ? year + '/' : ''),
+          );
+          card.className = 'model-card';
+          card.dataset.model = '';
+          const label = element('strong');
+          label.append(element('bdi', entry.name + (year ? ' ' + year : '')));
+          card.append(label, element('span', entry.make));
+          return card;
+        }),
+      );
+      suggestions.replaceChildren(
+        ...shown.slice(0, 8).map((entry) => {
+          const item = element('option');
+          const year =
+            requestedYear && entry.years.includes(Number(requestedYear))
+              ? ' ' + requestedYear
+              : '';
+          item.value = entry.make + ' ' + entry.name + year;
+          return item;
+        }),
+      );
+      makes.hidden = true;
+      section.hidden = false;
+      status.textContent = !matches.length
+        ? selectedOwnership
+          ? 'לא נמצאה התאמה במדגמי הבעלות הזמינים.'
+          : 'לא נמצאו דגמים. אפשר לשנות את החיפוש או את המסננים.'
+        : shown.length < matches.length
+          ? `${count.format(matches.length)} דגמים. מוצגות ${shown.length} תוצאות.`
+          : `${count.format(matches.length)} דגמים בקטלוג`;
+    } catch {
+      if (id !== current) return;
+      section.hidden = true;
+      makes.hidden = false;
+      status.textContent =
+        'החיפוש אינו זמין כרגע. אפשר לפתוח דגם דרך רשימת היצרנים.';
+    }
+  }
+  input.addEventListener('input', () => {
+    void search();
+  });
+  input.addEventListener('search', () => {
+    void search();
+  });
+  make.addEventListener('change', () => {
+    void search();
+  });
+  yearInput.addEventListener('input', () => {
+    void search();
+  });
+  trim.addEventListener('input', () => {
+    void search();
+  });
+  ownership.addEventListener('change', () => {
+    void search();
+  });
+  for (const control of powertrain)
+    control.addEventListener('change', () => void search());
+  document.querySelector('#catalog-reset')?.addEventListener('click', () => {
+    input.value = '';
+    make.value = '';
+    yearInput.value = '';
+    trim.value = '';
+    ownership.value = '';
+    for (const control of powertrain) control.value = '';
+    input.focus();
+    void search();
+  });
+  const parameters = new URLSearchParams(location.search);
+  input.value = parameters.get('q') ?? '';
+  const makeId = parameters.get('make') ?? '';
+  if ([...make.options].some(({ value }) => value === makeId))
+    make.value = makeId;
+  const modelYear = parameters.get('year') ?? '';
+  if (/^\d{4}$/.test(modelYear)) yearInput.value = modelYear;
+  for (const control of powertrain) {
+    const value = parameters.get(control.dataset.powertrain!) ?? '';
+    if ([...control.options].some((option) => option.value === value))
+      control.value = value;
+  }
+  if (powertrain.some(({ value }) => value))
+    document.querySelector<HTMLDetailsElement>('#powertrain-facets')!.open =
+      true;
+  if (
+    input.value ||
+    make.value ||
+    yearInput.value ||
+    powertrain.some(({ value }) => value)
+  )
+    void search();
+</script>

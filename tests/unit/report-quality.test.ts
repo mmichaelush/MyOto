@@ -1,0 +1,236 @@
+import { expect, test } from 'vitest';
+import { expiredDays, ownershipDate } from '../../src/domain/format';
+import { vehicleTimeline } from '../../src/domain/vehicle-timeline';
+import { buildReport } from '../../src/domain/report';
+import {
+  licensingFeeParameters,
+  vehicleViewModel,
+} from '../../src/presentation/vehicle-view-model';
+import type { Row } from '../../src/data/types';
+
+const source = (...rows: Row[]) => ({
+  rows,
+  durationMs: 0,
+  fetchedAt: '2026-11-23T10:00:00Z',
+});
+
+test('license expiry counts calendar days in Israel using a complete date', () => {
+  const now = new Date('2026-11-22T22:15:00Z');
+  expect(expiredDays('2026-11-22', now)).toBe(1);
+  expect(expiredDays('2026-11-23', now)).toBe(0);
+  expect(expiredDays('2026-11', now)).toBe(0);
+  expect(expiredDays('2026-11-31', now)).toBe(0);
+});
+
+test('ownership dates distinguish the day from the reported period', () => {
+  expect(ownershipDate(202205)).toBe('אפריל–יוני 2022');
+  expect(ownershipDate('2022-05-17')).toBe('17/05/2022');
+  expect(ownershipDate(null)).toBe('מועד לא זמין');
+});
+
+test('repeated dealer rows in the same period do not count as distinct owners', () => {
+  const registration = source({ tokef_dt: '2026-11-22' });
+  const report = buildReport(
+    '11234567',
+    'registration',
+    {
+      private_cars_1: registration,
+      history_2: source(
+        { baalut: 'סוחר', baalut_dt: 202201 },
+        { baalut: 'סוחר', baalut_dt: 202202 },
+        { baalut: 'סוחר', baalut_dt: 202204 },
+        { baalut: 'סוחר', baalut_dt: 202207 },
+      ),
+    },
+    true,
+  );
+  const view = vehicleViewModel(report, new Date('2026-11-23T00:00:00Z'));
+  expect(view.alerts.some((text) => text.includes('3 תקופות שונות'))).toBe(
+    true,
+  );
+  expect(
+    view.highlights.find((row) => row.id === 'tokef_dt')?.warning,
+  ).toContain('יום אחד');
+  expect(
+    view.sections
+      .flatMap((section) => section.groups.flat())
+      .some((row) => row.id === 'tokef_dt'),
+  ).toBe(true);
+});
+
+test('an independent registry date never dates the mileage reading', () => {
+  const registration = source({
+    misgeret: 'JTNFAKE1123456789',
+    mispar_manoa: 'ENGINE12345',
+    mivchan_acharon_dt: '2026-06-04',
+  });
+  const history = source({
+    mispar_manoa: 'ENGINE12345',
+    kilometer_test_aharon: 80000,
+  });
+  const report = buildReport(
+    '11234567',
+    'registration',
+    { private_cars_1: registration, history_1: history },
+    true,
+  );
+  const view = vehicleViewModel(report);
+  const reading = view.highlights.find(
+    (row) => row.id === 'kilometer_test_aharon',
+  );
+  expect(reading?.text).toBe('80,000 ק״מ');
+  expect(reading?.help).toContain('ללא תאריך המדידה');
+  expect(reading?.warning).toBeUndefined();
+  expect(
+    view.sections
+      .find((section) => section.id === 'registration')
+      ?.groups.flat(),
+  ).toContainEqual(
+    expect.objectContaining({ text: '04/06/2026', label: 'מבחן רישוי אחרון' }),
+  );
+
+  const changed = [
+    ['11234567', registration, history],
+    [
+      '11234567',
+      source({ ...registration.rows[0], mivchan_acharon_dt: '2026-09-04' }),
+      history,
+    ],
+    [
+      '11234567',
+      registration,
+      source({ ...history.rows[0], kilometer_test_aharon: 79000 }),
+    ],
+    [
+      '22345678',
+      registration,
+      source({ ...history.rows[0], mispar_manoa: 'UNCERTAIN' }),
+    ],
+  ] as const;
+  for (const [number, officialRegistry, officialMileage] of changed) {
+    const changedView = vehicleViewModel(
+      buildReport(
+        number,
+        'registration',
+        {
+          private_cars_1: officialRegistry,
+          history_1: officialMileage,
+        },
+        true,
+      ),
+    );
+    expect(
+      changedView.highlights.find((row) => row.id === 'kilometer_test_aharon')
+        ?.warning,
+    ).toBeUndefined();
+    expect(
+      changedView.alerts.some((message) => message.includes('ירידה בנסועה')),
+    ).toBe(false);
+    if (number !== '11234567') {
+      expect(
+        changedView.highlights.some(
+          (row) => row.id === 'kilometer_test_aharon',
+        ),
+      ).toBe(false);
+    }
+  }
+});
+
+test('puts eligible model towing specifications in the dimensions card without treating them as license values', () => {
+  const key = {
+    sug_degem: 'P',
+    tozeret_cd: 839,
+    degem_cd: 218,
+    shnat_yitzur: 2021,
+  };
+  const report = buildReport(
+    '11234567',
+    'registration',
+    {
+      private_cars_1: source({
+        ...key,
+        ramat_gimur: 'STYLE',
+        mishkal_kolel: 1800,
+      }),
+      modelDetails: source(
+        {
+          ...key,
+          ramat_gimur: 'STYLE',
+          kosher_grira_im_blamim: 750,
+          kosher_grira_bli_blamim: 0,
+        },
+        { ...key, ramat_gimur: 'GLI', kosher_grira_im_blamim: 1250 },
+        {
+          ...key,
+          degem_cd: 219,
+          ramat_gimur: 'STYLE',
+          kosher_grira_im_blamim: 1500,
+        },
+      ),
+    },
+    true,
+  );
+  const view = vehicleViewModel(report);
+  const dimensions = view.sections
+    .find((section) => section.id === 'dimensions')
+    ?.groups.flat();
+  expect(dimensions?.map(({ id, text, scope }) => [id, text, scope])).toEqual([
+    ['mishkal_kolel', '1,800 ק״ג', undefined],
+    ['kosher_grira_im_blamim', '750 ק״ג', 'model'],
+    ['kosher_grira_bli_blamim', '0 ק״ג', 'model'],
+  ]);
+});
+
+test('leaves fee group unset when model variants disagree or are incomplete', () => {
+  const key = {
+    sug_degem: 'P',
+    tozeret_cd: 839,
+    degem_cd: 218,
+    shnat_yitzur: 2020,
+  };
+  for (const otherGroup of [4, null]) {
+    const report = buildReport(
+      '11234567',
+      'registration',
+      {
+        private_cars_1: source({ ...key, moed_aliya_lakvish: '2021-1' }),
+        modelDetails: source(
+          { ...key, kvuzat_agra_cd: 3 },
+          { ...key, kvuzat_agra_cd: otherGroup },
+        ),
+      },
+      true,
+    );
+    expect(licensingFeeParameters(report).toString()).toBe('year=2021');
+  }
+});
+
+test('orders dated events while preserving separate ownership records in a quarter', () => {
+  const report = buildReport(
+    '11234567',
+    'registration',
+    {
+      private_cars_1: source({
+        moed_aliya_lakvish: '2021-1',
+        mivchan_acharon_dt: '2025-07-12',
+        kilometer_test_aharon: 123456,
+      }),
+      history_2: source(
+        { baalut_dt: 202202, baalut: 'פרטי' },
+        { baalut_dt: 202203, baalut: 'סוחר' },
+        { baalut_dt: 202213, baalut: 'מועד פגום' },
+      ),
+    },
+    true,
+  );
+  const rows = vehicleTimeline(report);
+  expect(rows.map((row) => row[1])).toEqual([
+    'טסט אחרון לפי המרשם',
+    'סוחר',
+    'פרטי',
+    'עלייה לכביש',
+  ]);
+  expect(rows[1][0]).toBe(rows[2][0]);
+  expect(rows[3][0]).toBe('01/2021');
+  expect(rows.flat()).not.toContain('123456');
+});

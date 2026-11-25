@@ -5,4 +5,6 @@ export default defineConfig({
   base: process.env.MYOTO_BASE ?? '/MyOto',
   trailingSlash: 'always',
   output: 'static',
+  devToolbar: { enabled: false },
+  build: { concurrency: 6, inlineStylesheets: 'never' },
 });

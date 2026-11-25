@@ -1,0 +1,303 @@
+---
+import Site from '../layouts/Site.astro';
+import '../styles/catalog.css';
+const fields = [
+  ['consumption', 'צריכת דלק בליטרים ל־100 ק״מ', '0.01', true],
+  ['unitPrice', 'מחיר לליטר בש״ח', '0.01', true],
+  ['insurance', 'ביטוח שנתי בש״ח', '0.01', false],
+  ['maintenance', 'טיפולים שנתיים בש״ח', '0.01', false],
+  ['licensing', 'רישוי שנתי בש״ח', '0.01', false],
+] as const;
+---
+
+<Site title="מחשבון עלות רכב שנתית">
+  <section class="panel catalog-heading">
+    <h1>מחשבון עלות רכב שנתית</h1>
+    <p>
+      השוו שני רכבים באותה נסועה. הזינו מחיר לליטר או לקוט״ש ואת הצריכה ל־100
+      ק״מ. שדות הוצאות ריקים מחושבים כאפס. החישוב כולל את ההוצאות שהזנתם.
+    </p>
+    <form id="vehicle-cost-form" hidden>
+      <label class="control distance">
+        נסועה שנתית בק״מ
+        <input
+          class="text-input"
+          name="distance"
+          type="number"
+          min="0"
+          max="1000000"
+          step="1"
+          required
+        />
+      </label>
+      <div class="vehicle-cost-options">
+        {['a', 'b'].map((side, index) => (
+          <fieldset>
+            <legend>רכב {index === 0 ? 'א׳' : 'ב׳'}</legend>
+            <label class="control">
+              יחידת צריכה
+              <select name={side + '-unit'}>
+                <option value="fuel">ליטר דלק</option>
+                <option value="electric">קוט״ש חשמל</option>
+              </select>
+            </label>
+            {fields.map(([key, label, step, required]) => (
+              <label class="control">
+                <span data-cost-field={key}>{label}</span>
+                <input
+                  class="text-input"
+                  name={side + '-' + key}
+                  type="number"
+                  min="0"
+                  max="1000000"
+                  {step}
+                  {required}
+                />
+              </label>
+            ))}
+          </fieldset>
+        ))}
+      </div>
+      <details>
+        <summary>השוואה כולל מחיר רכישה ושווי מכירה</summary>
+        <p class="muted">
+          החישוב מניח שהנסועה וההוצאות השנתיות קבועות לכל תקופת ההחזקה.
+        </p>
+        <label class="control distance">
+          תקופת החזקה בשנים
+          <input
+            class="text-input"
+            type="number"
+            name="years"
+            min="1"
+            max="30"
+            step="1"
+          />
+        </label>
+        <div class="vehicle-cost-options">
+          {['a', 'b'].map((side, index) => (
+            <fieldset>
+              <legend>רכב {index === 0 ? 'א׳' : 'ב׳'}</legend>
+              <label class="control">
+                מחיר רכישה בש״ח{' '}
+                <input
+                  class="text-input"
+                  type="number"
+                  name={side + '-purchase'}
+                  min="0"
+                  max="100000000"
+                  step="0.01"
+                />
+              </label>
+              <label class="control">
+                שווי מכירה צפוי בש״ח{' '}
+                <input
+                  class="text-input"
+                  type="number"
+                  name={side + '-resale'}
+                  min="0"
+                  max="100000000"
+                  step="0.01"
+                />
+              </label>
+            </fieldset>
+          ))}
+        </div>
+      </details>
+      <button type="submit">חישוב והשוואה</button>
+    </form>
+    <noscript>
+      <p>מחשבון העלויות דורש JavaScript.</p>
+    </noscript>
+    <p>
+      <a href={import.meta.env.BASE_URL + 'licensing-fees/'}>
+        למחשבון אגרת רישוי
+      </a>{' '}
+      ·{' '}
+      <a href={import.meta.env.BASE_URL + 'charging-cost/'}>
+        מחשבון טעינת רכב חשמלי
+      </a>{' '}
+      ·
+      <a href={import.meta.env.BASE_URL + 'depreciation/'}>
+        מחשבון ירידת ערך משוערת
+      </a>
+    </p>
+  </section>
+  <section class="panel catalog-data" id="vehicle-cost-result" hidden>
+    <h2>עלויות לפי הנתונים שהוזנו</h2>
+    <div
+      class="table-scroll"
+      role="region"
+      tabindex="0"
+      aria-label="השוואת עלויות לשני רכבים"
+    >
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">מדד</th>
+            <th scope="col">רכב א׳</th>
+            <th scope="col">רכב ב׳</th>
+          </tr>
+        </thead>
+        <tbody id="vehicle-cost-rows"></tbody>
+      </table>
+    </div>
+  </section>
+  <p id="vehicle-cost-status" role="status"></p>
+</Site>
+
+<script>
+  import { ownershipCost, vehicleCost } from '../domain/vehicle-cost';
+  import { element } from '../ui/dom';
+  const form = document.querySelector<HTMLFormElement>('#vehicle-cost-form')!;
+  const results = document.querySelector<HTMLElement>('#vehicle-cost-result')!;
+  const rows =
+    document.querySelector<HTMLTableSectionElement>('#vehicle-cost-rows')!;
+  const status = document.querySelector<HTMLElement>('#vehicle-cost-status')!;
+  const money = new Intl.NumberFormat('he-IL', {
+    style: 'currency',
+    currency: 'ILS',
+    maximumFractionDigits: 2,
+  });
+  const params = new URLSearchParams(location.search);
+  const firstUnit = form.querySelector<HTMLSelectElement>('[name="a-unit"]');
+  if (firstUnit && params.get('unit') === 'electric')
+    firstUnit.value = 'electric';
+  const unitControls = form.querySelectorAll<HTMLSelectElement>(
+    'select[name$="-unit"]',
+  );
+  for (const unit of unitControls) {
+    const fieldset = unit.closest('fieldset')!;
+    const consumption = fieldset.querySelector<HTMLElement>(
+      '[data-cost-field="consumption"]',
+    )!;
+    const price = fieldset.querySelector<HTMLElement>(
+      '[data-cost-field="unitPrice"]',
+    )!;
+    const showUnit = () => {
+      const electric = unit.value === 'electric';
+      consumption.textContent = electric
+        ? 'צריכת חשמל בקוט״ש ל־100 ק״מ'
+        : 'צריכת דלק בליטרים ל־100 ק״מ';
+      price.textContent = electric ? 'מחיר לקוט״ש בש״ח' : 'מחיר לליטר בש״ח';
+    };
+    unit.addEventListener('change', showUnit);
+    showUnit();
+  }
+  const licensing = params.get('licensing');
+  const firstFee = form.querySelector<HTMLInputElement>('[name="a-licensing"]');
+  if (firstFee && licensing && /^\d{1,5}$/.test(licensing))
+    firstFee.value = licensing;
+  form.hidden = false;
+  form.addEventListener('input', () => {
+    results.hidden = true;
+    status.textContent = '';
+  });
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const fields = new FormData(form);
+    const distance = Number(fields.get('distance'));
+    const calculate = (side: string) =>
+      vehicleCost({
+        distance,
+        consumption: Number(fields.get(side + '-consumption')),
+        unitPrice: Number(fields.get(side + '-unitPrice')),
+        insurance: Number(fields.get(side + '-insurance')),
+        maintenance: Number(fields.get(side + '-maintenance')),
+        licensing: Number(fields.get(side + '-licensing')),
+      });
+    const a = calculate('a');
+    const b = calculate('b');
+    if (!a || !b) {
+      results.hidden = true;
+      status.textContent = 'בדקו שהוזנו ערכים תקינים.';
+      return;
+    }
+    const ownershipFields = [
+      'years',
+      'a-purchase',
+      'a-resale',
+      'b-purchase',
+      'b-resale',
+    ];
+    const entered = ownershipFields.filter((name) => fields.get(name) !== '');
+    const years = Number(fields.get('years'));
+    const calculateOwnership = (side: string, annual: number) =>
+      ownershipCost(
+        annual,
+        years,
+        Number(fields.get(side + '-purchase')),
+        Number(fields.get(side + '-resale')),
+      );
+    const first =
+      entered.length === ownershipFields.length
+        ? calculateOwnership('a', a.yearly)
+        : undefined;
+    const second =
+      entered.length === ownershipFields.length
+        ? calculateOwnership('b', b.yearly)
+        : undefined;
+    rows.replaceChildren();
+    const lines: [string, number | undefined, number | undefined][] = [
+      ['אנרגיה לשנה', a.energy, b.energy],
+      ['סה״כ לשנה', a.yearly, b.yearly],
+      ['עלות לק״מ', a.perKilometer, b.perKilometer],
+    ];
+    if (first && second)
+      lines.push(
+        [`הוצאות תפעול ל־${years} שנים`, first.operating, second.operating],
+        [
+          'פער בין מחיר רכישה לשווי מכירה',
+          first.depreciation,
+          second.depreciation,
+        ],
+        [`עלות החזקה כוללת ל־${years} שנים`, first.total, second.total],
+      );
+    for (const [label, first, second] of lines) {
+      const row = rows.insertRow();
+      const title = element('th', label);
+      title.scope = 'row';
+      row.append(title);
+      for (const value of [first, second])
+        row.insertCell().textContent =
+          value === undefined ? '—' : money.format(value);
+    }
+    results.hidden = false;
+    const difference = Math.abs(a.yearly - b.yearly);
+    status.textContent =
+      difference < 0.005
+        ? 'העלות השנתית המחושבת זהה בשני הרכבים.'
+        : `רכב ${a.yearly < b.yearly ? 'א׳' : 'ב׳'} זול יותר ב־${money.format(difference)} לשנה לפי הנתונים שהוזנו.`;
+    if (entered.length && (!first || !second))
+      status.textContent +=
+        ' להשוואת עלות החזקה, מלאו את התקופה ואת מחירי הרכישה והמכירה לשני הרכבים.';
+    if (first && second) {
+      const gap = Math.abs(first.total - second.total);
+      status.textContent +=
+        gap < 0.005
+          ? ' עלות ההחזקה הכוללת זהה.'
+          : ` רכב ${first.total < second.total ? 'א׳' : 'ב׳'} זול יותר ב־${money.format(gap)} לאורך התקופה.`;
+    }
+  });
+</script>
+
+<style>
+  form[hidden],
+  section[hidden] {
+    display: none;
+  }
+  .distance {
+    max-inline-size: 20rem;
+  }
+  fieldset {
+    min-inline-size: 0;
+    display: grid;
+    gap: 0.65rem;
+  }
+  .vehicle-cost-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+    gap: 1rem;
+    margin-block: 1rem;
+  }
+</style>

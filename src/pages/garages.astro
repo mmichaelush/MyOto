@@ -1,0 +1,124 @@
+﻿---
+import Site from '../layouts/Site.astro';
+import { resources } from '../data/sources';
+import '../styles/catalog.css';
+---
+
+<Site title="איתור מוסכים ומכוני רישוי">
+  <section class="panel catalog-heading">
+    <h1>איתור מוסכים ומכוני רישוי</h1>
+    <p>
+      <a href="https://www.gov.il/he/service/vehicle_authorized_licensing_agency">
+        מכוני רישוי לטסט וזימון תור
+      </a>{' '}
+      ·{' '}
+      <a href="https://www.gov.il/he/service/authorized_garages">
+        איתור רשמי לפי יישוב
+      </a>
+    </p>
+    <form id="garage-search" hidden>
+      <label class="control">
+        יישוב <input class="text-input" name="city" required maxlength="60" />
+      </label>
+      <label class="control">
+        התמחות <input class="text-input" name="trade" maxlength="80" />
+      </label>
+      <button>איתור מוסכים</button>
+    </form>
+    <p id="garage-status" role="status"></p>
+    <div id="garage-results" class="grid-data"></div>
+    <a href={resources.garages.url}>מקור הנתונים</a>
+  </section>
+</Site>
+
+<script>
+  import { directoryKey as key, readDirectory } from '../ui/public-directory';
+  import { resources } from '../data/sources';
+  import { element } from '../ui/dom';
+
+  const form = document.querySelector<HTMLFormElement>('#garage-search')!;
+  const status = document.querySelector<HTMLElement>('#garage-status')!;
+  const results = document.querySelector<HTMLElement>('#garage-results')!;
+  const fields = [
+    'mispar_mosah',
+    'shem_mosah',
+    'ktovet',
+    'yishuv',
+    'telephone',
+    'miktzoa',
+  ] as const;
+  type Row = Record<(typeof fields)[number], unknown>;
+  let directory: Row[] | undefined;
+  let active: AbortController | undefined;
+  const value = (input: unknown) =>
+    typeof input === 'string' ? input.trim() : '';
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    active?.abort();
+    const request = new AbortController();
+    active = request;
+    const filters = new FormData(form);
+    const city = key(String(filters.get('city') ?? ''));
+    const trade = key(String(filters.get('trade') ?? ''));
+    results.replaceChildren();
+    if (!city) {
+      status.textContent = 'הקלידו שם יישוב.';
+      return;
+    }
+    status.textContent = 'מחפש במאגר משרד התחבורה…';
+    try {
+      directory ??= await readDirectory(
+        resources.garages.id,
+        fields,
+        request.signal,
+      );
+      if (request.signal.aborted) return;
+      const matches = new Map<string, { row: Row; trades: Set<string> }>();
+      for (const row of directory) {
+        if (
+          !row ||
+          !value(row.shem_mosah) ||
+          !key(value(row.yishuv)).includes(city)
+        )
+          continue;
+        const specialty = value(row.miktzoa);
+        if (trade && !key(specialty).includes(trade)) continue;
+        const id = JSON.stringify([
+          row.mispar_mosah,
+          row.shem_mosah,
+          row.ktovet,
+          row.yishuv,
+        ]);
+        const match = matches.get(id) ?? { row, trades: new Set<string>() };
+        if (specialty) match.trades.add(specialty);
+        matches.set(id, match);
+      }
+      const sorted = [...matches.values()].sort((a, b) =>
+        value(a.row.shem_mosah).localeCompare(value(b.row.shem_mosah), 'he'),
+      );
+      for (const { row, trades } of sorted.slice(0, 100)) {
+        const card = element('article', undefined, 'datum');
+        card.append(
+          element('h2', value(row.shem_mosah)),
+          element(
+            'p',
+            [value(row.yishuv), value(row.ktovet), value(row.telephone)]
+              .filter(Boolean)
+              .join(' · '),
+          ),
+        );
+        if (trades.size) card.append(element('p', [...trades].join(' · ')));
+        results.append(card);
+      }
+      status.textContent = !sorted.length
+        ? 'לא נמצאו מוסכים תואמים.'
+        : sorted.length > 100
+          ? `נמצאו ${sorted.length} מוסכים. מוצגות 100 תוצאות, אפשר לצמצם לפי התמחות.`
+          : `נמצאו ${sorted.length} מוסכים.`;
+    } catch {
+      if (!request.signal.aborted)
+        status.textContent = 'המאגר אינו זמין כרגע. אפשר להשתמש באיתור הרשמי.';
+    }
+  });
+  form.hidden = false;
+</script>
